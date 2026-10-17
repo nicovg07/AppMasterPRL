@@ -8,7 +8,7 @@ const clone = o => o == null ? o : JSON.parse(JSON.stringify(o));
 function lsGet(k) { try { return JSON.parse(localStorage.getItem("prl:" + k)); } catch (_) { return null; } }
 function lsSet(k, v) { try { localStorage.setItem("prl:" + k, JSON.stringify(v)); } catch (_) {} }
 const DIFF = { facil: "Fácil", media: "Media", dificil: "Difícil" };
-const ORIGIN = { oficial: "Autoevaluación", claude: "Generada", propia: "Tuya" };
+const ORIGIN = { oficial: "Autoevaluación", claude: "Generada", auto: "Generada", propia: "Tuya" };
 const LET = "ABCDEFGH";
 const fmtNum = n => String(Math.round(n * 10) / 10).replace(".", ",");
 const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
@@ -20,6 +20,7 @@ const ICON = {
   test: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="m8 9 1.5 1.5L12 8M8 15.5l1.5 1.5L12 14.5M14.5 9.5H17M14.5 16H17"/></svg>',
   sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
   moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11z"/></svg>',
+  book: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 6.5C10.5 5 8 4.5 4 4.5v14c4 0 6.5.5 8 2 1.5-1.5 4-2 8-2v-14c-4 0-6.5.5-8 2zM12 6.5v14"/></svg>',
   tri: '<svg class="tri" viewBox="0 0 18 16" aria-hidden="true"><path d="M9 1 17 15H1z" fill="none" stroke="var(--warn)" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 6v4" stroke="var(--warn)" stroke-width="1.6" stroke-linecap="round"/><circle cx="9" cy="12.4" r=".9" fill="var(--warn)"/></svg>'
 };
 
@@ -28,7 +29,7 @@ const ICON = {
 const S = {
   view: "home", p: {}, mode: "loading",
   topics: {}, banks: {}, subjects: {}, ready: { t: false, b: false, s: false },
-  db: null, sample: null,
+  db: null,
   setup: Object.assign({ tids: [], diffs: ["facil", "media", "dificil"], origin: "todas", n: 10, mode: "practica", min: null, shuf: true, penalty: false }, lsGet("setup") || {}),
   run: null, res: {}, lock: false, busy: null
 };
@@ -37,6 +38,10 @@ const S = {
 const subjOrder = sid => S.subjects[sid]?.order ?? 999;
 const topicList = () => Object.values(S.topics).sort((a, b) => subjOrder(a.subject) - subjOrder(b.subject) || (a.subject || "").localeCompare(b.subject || "") || (a.order || 0) - (b.order || 0) || (a.createdAt || 0) - (b.createdAt || 0));
 const bank = tid => S.banks[tid] || { questions: [] };
+// Dónde se explica en los apuntes impresos: { t?: tema si es otro, pg: número impreso en la página, sec: apartado }
+const topicNum = t => t ? String(t.code || "").replace(/^T/i, "") : "";
+const srcText = (src, tid) => { if (!src || !src.pg) return ""; const t = S.topics[src.t || tid]; return `${t ? "Tema " + topicNum(t) + " · " : ""}pág. ${src.pg}`; };
+const whereHTML = (src, tid) => src && src.pg ? `<div class="where">${ICON.book}<span class="small">En tus apuntes:</span><span class="ref accent">${esc(srcText(src, tid))}</span>${src.sec ? `<span class="small">${esc(src.sec)}</span>` : ""}</div>` : "";
 const allQ = () => topicList().flatMap(t => bank(t.id).questions.map(q => ({ ...q, tid: t.id })));
 function findQ(tid, qid) { return bank(tid).questions.find(q => q.id === qid); }
 /* Asignaturas: las de subjects/<id> (aunque aún no tengan temas) y, después, las que solo aparecen en algún tema. */
@@ -72,7 +77,6 @@ async function boot() {
   paintTheme();
   render();
   const db = await Store.init();
-  S.sample = AI.sample;
   S.db = db; S.mode = "ok";
   db.collection("topics").onSnapshot(snap => { const t = {}; for (const d of snap.docs) if (d.exists) t[d.id] = { id: d.id, ...d.data() }; S.topics = t; S.ready.t = true; refresh(); }, onDbErr);
   db.collection("subjects").onSnapshot(snap => { const s = {}; for (const d of snap.docs) if (d.exists) s[d.id] = { id: d.id, ...d.data() }; S.subjects = s; S.ready.s = true; refresh(); }, onDbErr);
@@ -98,7 +102,6 @@ function renderNav() {
 function loadingView() { return `<div class="stack"><div class="skel" style="width:40%"></div><div class="skel" style="width:70%;height:30px"></div><div class="skel" style="width:90%"></div><div class="skel" style="width:60%"></div></div>`; }
 function noDbView() { return `<div class="stack"><h1>No se pudieron cargar tus datos</h1><p class="muted">Recarga la página. Si sigue sin funcionar, revisa que el navegador permita guardar datos de este sitio.</p></div>`; }
 function contentLoading() { return !(S.ready.t && S.ready.b && S.ready.s); }
-const canAI = () => !!window.AI;
 
 const VIEWS = {};
 
@@ -106,7 +109,7 @@ const VIEWS = {};
 VIEWS.home = () => {
   if (contentLoading()) return loadingView();
   const all = subjects();
-  if (!all.length) return `<div class="stack-lg"><div class="stack"><p class="eyebrow">Máster PRL · Nebrija</p><h1>Empieza por tu primer tema</h1><p class="muted">Sube los apuntes y la autoevaluación de un tema y Claude prepara el resumen, los recursos y el banco de preguntas.</p></div><button class="btn" data-act="go" data-v="newtopic">Añadir tema</button></div>`;
+  if (!all.length) return `<div class="stack-lg"><div class="stack"><p class="eyebrow">Máster PRL · Nebrija</p><h1>Aún no hay temas</h1></div></div>`;
   return `<div class="stack-lg"><img class="hero" src="img/portada.webp" alt="Máster en PRL · Prevención de Riesgos Laborales" width="1024" height="572">
     <div class="stack" style="gap:4px"><p class="eyebrow">Universidad Nebrija</p><h1>Asignaturas</h1></div>
     <div class="subjects">${all.map((s, i) => `<button class="subj ${s.topics.length ? "" : "void"}" data-act="subject" data-s="${esc(s.id)}"><span class="eyebrow">Asignatura ${i + 1}</span><span class="subj-name">${esc(s.short)}</span><span class="small muted">${s.topics.length ? `${s.topics.length} ${s.topics.length === 1 ? "tema" : "temas"} · ${nQuestions(s)} preguntas` : "Sin temas todavía"}</span></button>`).join("")}</div>
@@ -121,8 +124,8 @@ VIEWS.subject = () => {
   return `<div class="stack-lg"><div class="stack"><button class="back" data-act="go" data-v="home">← Asignaturas</button>
     <div class="stack" style="gap:4px"><p class="eyebrow">Asignatura ${i + 1}</p><h1>${esc(s.short)}</h1>${s.name !== s.short ? `<p class="small muted">${esc(s.name)}</p>` : ""}</div></div>
     ${s.topics.length ? `<div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><button class="btn" data-act="quick" data-m="practica" data-s="${esc(s.id)}">Practicar</button><button class="btn ghost" data-act="quick" data-m="examen" data-s="${esc(s.id)}">Simular examen</button></div>
-    <section class="stack"><div class="spread"><h2>Temas</h2><button class="btn quiet sm" data-act="newTopicFor" data-s="${esc(s.id)}">Añadir tema</button></div><div class="list">${s.topics.map(topicRow).join("")}</div></section>`
-    : `<p class="empty">Aún no hay temas de esta asignatura.</p><div><button class="btn" data-act="newTopicFor" data-s="${esc(s.id)}">Añadir tema</button></div>`}
+    <section class="stack"><h2>Temas</h2><div class="list">${s.topics.map(topicRow).join("")}</div></section>`
+    : `<p class="empty">Aún no hay temas de esta asignatura.</p>`}
   </div>`;
 };
 function topicRow(t) {
@@ -194,12 +197,9 @@ function tabBanco(t) {
   const list = qs.filter(q => f === "todas" || q.diff === f || q.origin === f);
   const counts = { oficial: qs.filter(q => q.origin === "oficial").length };
   return `<div class="stack">
-    <div class="row"><button class="btn sm" data-act="editq" data-t="${t.id}">Nueva pregunta</button>${canAI() ? `<button class="btn ghost sm" data-act="gen" data-t="${t.id}">Generar con Claude</button><button class="btn ghost sm" data-act="importAuto" data-t="${t.id}">Importar autoevaluación</button>` : ""}</div>
-    <input type="file" id="autoFile" accept=".pdf,.txt" hidden data-chg="autoFile" data-t="${t.id}">
+    <div class="row"><button class="btn sm" data-act="gen" data-t="${t.id}">Generar preguntas</button><button class="btn ghost sm" data-act="editq" data-t="${t.id}">Nueva pregunta</button></div>
     <div class="chips">${[["todas", `Todas · ${qs.length}`], ["oficial", `Autoevaluación · ${counts.oficial}`], ["facil", "Fácil"], ["media", "Media"], ["dificil", "Difícil"]].map(([k, l]) => `<button class="chip" aria-pressed="${f === k}" data-act="bf" data-k="${k}">${l}</button>`).join("")}</div>
-    ${S.busy && S.busy.kind === "auto" ? `<div class="callout accent small">${esc(S.busy.msg)}</div>` : ""}
-    <div class="list">${list.map(q => `<button class="item" data-act="editq" data-t="${t.id}" data-q="${q.id}"><div class="grow stack" style="gap:6px"><span>${esc(q.q)}</span><span class="row" style="gap:6px"><span class="badge ${q.origin === "oficial" ? "oficial" : ""}">${ORIGIN[q.origin] || "Tuya"}</span><span class="badge">${DIFF[q.diff] || "Media"}</span>${q.check ? `<span class="badge check">Revisar respuesta</span>` : ""}</span></div></button>`).join("") || `<p class="empty">No hay preguntas con este filtro.</p>`}</div>
-    ${S.p.delTopic ? `<div class="callout bad confirm"><span class="grow">¿Eliminar «${esc(t.title)}» con sus preguntas?</span><button class="btn danger sm" data-act="delTopic" data-t="${t.id}">Eliminar</button><button class="btn quiet sm" data-act="delTopicNo">Cancelar</button></div>` : `<div><button class="btn quiet sm" style="color:var(--bad)" data-act="delTopicAsk">Eliminar tema</button></div>`}
+    <div class="list">${list.map(q => `<button class="item" data-act="editq" data-t="${t.id}" data-q="${q.id}"><div class="grow stack" style="gap:6px"><span>${esc(q.q)}</span><span class="row" style="gap:6px"><span class="badge ${q.origin === "oficial" ? "oficial" : ""}">${ORIGIN[q.origin] || "Tuya"}</span><span class="badge">${DIFF[q.diff] || "Media"}</span>${q.src && q.src.pg ? `<span class="badge">${esc(q.src.t ? srcText(q.src, t.id) : "pág. " + q.src.pg)}</span>` : ""}${q.check ? `<span class="badge check">Revisar respuesta</span>` : ""}</span></div></button>`).join("") || `<p class="empty">No hay preguntas con este filtro.</p>`}</div>
   </div>`;
 }
 
@@ -214,7 +214,7 @@ VIEWS.editq = () => {
     <div class="field"><span class="label">Respuestas · marca la correcta</span>${opts.map((o, i) => `<div class="row" style="flex-wrap:nowrap"><input type="radio" name="q_a" id="q_a${i}" value="${i}" ${d.a === i ? "checked" : ""} style="width:22px;height:22px;accent-color:var(--ok)" aria-label="Correcta ${LET[i]}"><span class="ref">${LET[i]}</span><input class="input" id="q_o${i}" value="${esc(o)}" placeholder="${i < 2 ? "Obligatoria" : "Opcional"}"></div>`).join("")}</div>
     <div class="field"><label for="q_e">Explicación</label><textarea class="input" id="q_e" placeholder="Por qué es correcta">${esc(d.exp)}</textarea></div>
     <div class="field"><span class="label">Dificultad</span><div class="seg" id="q_d">${Object.entries(DIFF).map(([k, l]) => `<button type="button" aria-pressed="${d.diff === k}" data-act="segPick" data-k="${k}">${l}</button>`).join("")}</div></div>
-    ${q && q.check ? `<div class="callout warn small">Claude no encontró marcada la respuesta correcta en la autoevaluación y la dedujo de los apuntes. Compruébala y guarda.</div>` : ""}
+    ${q && q.check ? `<div class="callout warn small">La respuesta correcta no venía marcada en la autoevaluación y se dedujo de los apuntes. Compruébala y guarda.</div>` : ""}
     <div class="row"><button class="btn" type="submit">Guardar</button><button class="btn ghost" type="button" data-act="backTopic" data-k="banco">Cancelar</button>
     ${q ? (S.p.del ? `<span class="confirm"><button class="btn danger sm" type="button" data-act="delQ">Sí, eliminar</button><button type="button" class="btn quiet sm" data-act="delNo">No</button></span>` : `<button class="btn quiet" type="button" style="color:var(--bad)" data-act="delAsk">Eliminar</button>`) : ""}</div>
   </form>`;
@@ -242,7 +242,7 @@ VIEWS.setup = () => {
       <label class="toggle" for="pen"><span><b>Restar fallos</b><br><span class="small muted">Cada fallo resta 1/(nº de opciones − 1) de acierto</span></span><input type="checkbox" id="pen" ${c.penalty ? "checked" : ""} data-chg="pen"></label>` : ""}
     <div><label class="toggle" for="shuf"><span><b>Barajar respuestas</b><br><span class="small muted">Para no memorizar la posición</span></span><input type="checkbox" id="shuf" ${c.shuf ? "checked" : ""} data-chg="shuf"></label></div>
     <div class="stack"><button class="btn block" data-act="start" ${n ? "" : "disabled"}>Empezar · ${n} ${n === 1 ? "pregunta" : "preguntas"}</button>
-    ${P.length < 15 && canAI() && topicList().length ? `<p class="small muted">Solo hay ${P.length} preguntas con estos filtros. <button class="link" data-act="gen" data-t="${c.tids[0] || topicList()[0].id}">Genera más con Claude</button></p>` : ""}</div>
+    ${P.length < 15 && topicList().length ? `<p class="small muted">Solo hay ${P.length} preguntas con estos filtros. <button class="link" data-act="gen" data-t="${c.tids[0] || topicList()[0].id}">Genera más</button></p>` : ""}</div>
   </div>`;
 };
 
@@ -274,8 +274,7 @@ VIEWS.run = () => {
   let after = "";
   if (shown) {
     const ok = ans === q.a;
-    after = `<div class="callout ${ok ? "ok" : "bad"} stack" style="gap:6px"><b>${ok ? "Correcto" : "Incorrecto · la buena es la " + LET[it.order.indexOf(q.a)]}</b>${q.exp ? `<p class="explain">${esc(q.exp)}</p>` : ""}</div>
-    ${canAI() ? `<div class="stack" id="whyBox">${S.p.why === i ? "" : `<button class="btn ghost sm" style="align-self:flex-start" data-act="why">${ok ? "Profundiza con Claude" : "¿Por qué fallé? Pregunta a Claude"}</button>`}<div class="ai" id="whyOut"></div></div>` : ""}
+    after = `<div class="callout ${ok ? "ok" : "bad"} stack" style="gap:6px"><b>${ok ? "Correcto" : "Incorrecto · la buena es la " + LET[it.order.indexOf(q.a)]}</b>${q.exp ? `<p class="explain">${esc(q.exp)}</p>` : ""}${whereHTML(q.src, it.tid)}</div>
     <button class="btn block" data-act="${i < total - 1 ? "next" : "finish"}">${i < total - 1 ? "Siguiente" : "Ver resultado"}</button>`;
   }
   const examNav = exam ? `<div class="spread"><button class="btn ghost sm" data-act="prev" ${i === 0 ? "disabled" : ""}>Anterior</button><button class="btn ghost sm" data-act="flag" aria-pressed="${r.flags[i]}">${r.flags[i] ? "Marcada" : "Marcar para revisar"}</button><button class="btn sm" data-act="${i < total - 1 ? "next" : "submitAsk"}">${i < total - 1 ? "Siguiente" : "Entregar"}</button></div>
@@ -310,215 +309,76 @@ VIEWS.result = () => {
     <div class="row" style="align-items:baseline;gap:12px"><span class="score">${fmtNum(R.nota)}</span><span class="muted">sobre 10</span></div></div>
     <div class="stats"><div class="stat"><b style="color:var(--ok)">${R.c}</b><span>aciertos</span></div><div class="stat"><b style="color:var(--bad)">${R.w}</b><span>fallos${R.penalty ? " (restan)" : ""}</span></div><div class="stat"><b>${R.mode === "examen" ? fmtTime(R.sec) : R.b}</b><span>${R.mode === "examen" ? "tiempo" : "en blanco"}</span></div></div>
     <div class="row">${wrong.length ? `<button class="btn" data-act="retryWrong">Repetir las ${wrong.length} no acertadas</button>` : ""}<button class="btn ghost" data-act="go" data-v="setup">Nuevo test</button></div>
-    <section class="stack"><h2>Repaso</h2><div class="list">${R.rows.map((x, k) => { const q = findQ(x.tid, x.qid); if (!q) return ""; const mine = x.a == null ? "Sin responder" : `${LET[x.order.indexOf(x.a)]}. ${esc(q.opts[x.a])}`; return `<div class="item"><span class="ref" style="background:${x.ok ? "var(--ok-soft)" : "var(--bad-soft)"};color:${x.ok ? "var(--ok)" : "var(--bad)"}">${k + 1}</span><div class="grow stack" style="gap:6px"><span class="item-title">${esc(q.q)}</span>${x.ok ? `<span class="small" style="color:var(--ok)">${LET[x.order.indexOf(q.a)]}. ${esc(q.opts[q.a])}</span>` : `<span class="small" style="color:var(--bad)">Tu respuesta: ${mine}</span><span class="small" style="color:var(--ok)">Correcta: ${LET[x.order.indexOf(q.a)]}. ${esc(q.opts[q.a])}</span>`}${!x.ok && q.exp ? `<span class="small muted">${esc(q.exp)}</span>` : ""}</div></div>`; }).join("")}</div></section>
+    <section class="stack"><h2>Repaso</h2><div class="list">${R.rows.map((x, k) => { const q = findQ(x.tid, x.qid); if (!q) return ""; const mine = x.a == null ? "Sin responder" : `${LET[x.order.indexOf(x.a)]}. ${esc(q.opts[x.a])}`; return `<div class="item"><span class="ref" style="background:${x.ok ? "var(--ok-soft)" : "var(--bad-soft)"};color:${x.ok ? "var(--ok)" : "var(--bad)"}">${k + 1}</span><div class="grow stack" style="gap:6px"><span class="item-title">${esc(q.q)}</span>${x.ok ? `<span class="small" style="color:var(--ok)">${LET[x.order.indexOf(q.a)]}. ${esc(q.opts[q.a])}</span>` : `<span class="small" style="color:var(--bad)">Tu respuesta: ${mine}</span><span class="small" style="color:var(--ok)">Correcta: ${LET[x.order.indexOf(q.a)]}. ${esc(q.opts[q.a])}</span>`}${!x.ok && q.exp ? `<span class="small muted">${esc(q.exp)}</span>` : ""}${!x.ok ? whereHTML(q.src, x.tid) : ""}</div></div>`; }).join("")}</div></section>
   </div>`;
 };
 
-/* ----- generate with Claude ----- */
+/* ----- generar preguntas (sin IA): las crea la app con los recursos y el resumen del tema ----- */
+const norm = s => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+const REF_LEGAL = /^(CE|ET|LPRL|RSP|LGSS(\/15)?|LISOS|LOLS|CC|CP|RDLeg|RD|Ley|Directiva|Art\.)\b|^C\d{3}\b/i;
+const head = s => (String(s).match(/^[A-Za-zÁÉÍÓÚáéíóú]+/) || [""])[0].toLowerCase();
+const similarFirst = (right, pool) => shuffle(pool).sort((a, b) => (head(b) === head(right)) - (head(a) === head(right)));
+const leadTitle = title => title.replace(/:\s*ordena.*$/i, "").replace(/^ordena\s+(\S)/i, (_, c) => c.toUpperCase());
+function genCandidates(t) {
+  const out = [], seenQ = new Set();
+  const add = (q, right, pool, exp, diff, minWrong = 2, src = null) => {
+    const k = norm(q); if (seenQ.has(k)) return;
+    const used = new Set([norm(right)]), wrong = [];
+    for (const w of pool) { const n = norm(w); if (!n || used.has(n)) continue; used.add(n); wrong.push(w); if (wrong.length === 3) break; }
+    if (wrong.length < minWrong) return;
+    seenQ.add(k); out.push({ q, right, wrong, exp, diff, src });
+  };
+  for (const r of t.resources || []) {
+    const at = i => (r.src || [])[i] || null;
+    if (r.type === "match") r.pairs.forEach(([a, b], i) => {
+      const others = r.pairs.filter(p => p[0] !== a);
+      add(`${r.title}: ¿qué corresponde a «${a}»?`, b, shuffle(others.map(p => p[1])), `«${a}»: ${b}.`, "facil", 2, at(i));
+      add(`${r.title}: ¿qué corresponde a «${b}»?`, a, shuffle(others.map(p => p[0])), `«${b}»: ${a}.`, "media", 2, at(i));
+    });
+    if (r.type === "classify") r.items.forEach(([item, k], i) => {
+      const q = /\?$/.test(r.title) ? `«${item}». ${r.title}` : `«${item}»: ${r.title}`;
+      add(q, r.categories[k], shuffle(r.categories.filter((_, j) => j !== k)), `«${item}» va en «${r.categories[k]}».`, r.categories.length > 2 ? "media" : "facil", 1, at(i));
+    });
+    if (r.type === "order" && !/grave/i.test(r.title)) {
+      if (r.items.every(x => /^\d{4}$/.test(x[1]))) r.items.forEach(([h, y], i) =>
+        add(`«${h}»: ¿en qué año?`, y, shuffle(r.items.filter(x => x[0] !== h).map(x => x[1])), `${h}: ${y}.`, "dificil", 2, at(i)));
+      r.items.forEach(([h], i) => {
+        if (i === r.items.length - 1) return;
+        const next = r.items[i + 1][0];
+        add(`${leadTitle(r.title)}: ¿qué va justo después de «${h}»?`, next, shuffle(r.items.filter((_, j) => j !== i && j !== i + 1).map(x => x[0])),
+          `Orden: ${r.items.slice(Math.max(0, i - 1), i + 3).map(x => x[0]).join(" → ")}.`, "dificil", 2, at(i + 1));
+      });
+    }
+  }
+  const keys = (t.summary || []).flatMap(b => (b.keys || []).filter(k => k.r && REF_LEGAL.test(k.r)));
+  for (const k of keys) add(`¿Qué norma o artículo corresponde a esta idea? «${k.t}»`, k.r, similarFirst(k.r, keys.filter(x => norm(x.r) !== norm(k.r)).map(x => x.r)), `${k.r}: ${k.t}.`, "dificil", 2, k.src || null);
+  return out;
+}
+function genPool(t) { const have = new Set(bank(t.id).questions.map(q => norm(q.q))); return genCandidates(t).filter(c => !have.has(norm(c.q))); }
 VIEWS.gen = () => {
   const t = S.topics[S.p.tid]; if (!t) return `<p class="empty">Elige un tema para generar.</p>`;
-  const g = S.p; const res = g.result || [];
-  return `<div class="stack-lg"><div class="stack"><button class="back" data-act="backTopic" data-k="banco">← ${esc(t.code)} · Preguntas</button><h1>Generar preguntas</h1><p class="muted">Claude las crea a partir de los apuntes de «${esc(t.title)}» y evita repetir las que ya tienes.</p></div>
-    <div class="field"><span class="label">Dificultad</span><div class="seg">${[...Object.entries(DIFF), ["mix", "Mezcla"]].map(([k, l]) => `<button aria-pressed="${(g.diff || "media") === k}" data-act="genSet" data-f="diff" data-k="${k}">${l}</button>`).join("")}</div></div>
-    <div class="field"><span class="label">Cuántas</span><div class="seg">${[5, 10, 15].map(k => `<button aria-pressed="${(g.n || 10) === k}" data-act="genSet" data-f="n" data-k="${k}">${k}</button>`).join("")}</div></div>
-    <div class="field"><label for="gfocus">Enfoque (opcional)</label><input class="input" id="gfocus" value="${esc(g.focus || "")}" placeholder="Convenios de la OIT, fechas, órganos…"></div>
-    <div class="row">${g.running ? `<button class="btn ghost" data-act="genStop">Detener</button><span class="small muted">${esc(g.status || "Claude está escribiendo…")}</span>` : `<button class="btn" data-act="genRun">${res.length ? "Generar otras" : "Generar"}</button>`}</div>
-    ${g.error ? `<div class="callout bad small">${esc(g.error)}</div>` : ""}
+  const g = S.p; const res = g.result || []; const left = genPool(t).length;
+  return `<div class="stack-lg"><div class="stack"><button class="back" data-act="backTopic" data-k="banco">← ${esc(t.code)} · Preguntas</button><h1>Generar preguntas</h1><p class="muted">La app las crea con los recursos y el resumen de «${esc(t.title)}», sin repetir las que ya tienes.</p></div>
+    <div class="field"><span class="label">Cuántas</span><div class="seg">${[5, 10, 20].map(k => `<button aria-pressed="${(g.n || 10) === k}" data-act="genSet" data-f="n" data-k="${k}">${k}</button>`).join("")}</div></div>
+    <div class="row"><button class="btn" data-act="genRun" ${left ? "" : "disabled"}>${res.length ? "Generar otras" : "Generar"}</button><span class="small muted">${left ? `Se pueden crear ${left} más` : "Ya tienes todas las que se pueden crear con este tema."}</span></div>
     ${res.length ? `<section class="stack"><div class="spread"><h2>${res.length} ${res.length === 1 ? "pregunta nueva" : "preguntas nuevas"}</h2><span class="small muted">Desmarca las que no quieras</span></div>
-      <div>${res.map((x, i) => `<label class="gen-q" for="gk${i}"><input type="checkbox" id="gk${i}" ${x.keep ? "checked" : ""} data-chg="genKeep" data-i="${i}"><span class="stack" style="gap:6px"><b>${esc(x.q)}</b><span class="small">${x.opts.map((o, k) => `<span style="${k === x.a ? "color:var(--ok);font-weight:600" : "color:var(--muted)"}">${LET[k]}. ${esc(o)}</span>`).join("<br>")}</span><span class="small muted">${esc(x.exp)}</span><span><span class="badge">${DIFF[x.diff]}</span></span></span></label>`).join("")}</div>
+      <div>${res.map((x, i) => `<label class="gen-q" for="gk${i}"><input type="checkbox" id="gk${i}" ${x.keep ? "checked" : ""} data-chg="genKeep" data-i="${i}"><span class="stack" style="gap:6px"><b>${esc(x.q)}</b><span class="small">${x.opts.map((o, k) => `<span style="${k === x.a ? "color:var(--ok);font-weight:600" : "color:var(--muted)"}">${LET[k]}. ${esc(o)}</span>`).join("<br>")}</span><span class="row" style="gap:6px"><span class="badge">${DIFF[x.diff]}</span>${x.src && x.src.pg ? `<span class="badge">pág. ${esc(x.src.pg)}</span>` : ""}</span></span></label>`).join("")}</div>
       <button class="btn block" data-act="genSave" ${res.some(x => x.keep) ? "" : "disabled"}>Añadir ${res.filter(x => x.keep).length} al tema</button></section>` : ""}
   </div>`;
 };
-
-/* ----- new topic ----- */
-VIEWS.newtopic = () => {
-  const p = S.p; const sb = subjects();
-  const steps = p.steps; const sid0 = sb.find(s => s.id === p.sid)?.id || sb[0]?.id || "__new";
-  return `<form class="stack-lg" id="fnt"><div class="stack">${p.sid ? `<button type="button" class="back" data-act="subject" data-s="${esc(p.sid)}">← ${esc(sb.find(s => s.id === p.sid)?.short || "Asignatura")}</button>` : `<button type="button" class="back" data-act="go" data-v="home">← Asignaturas</button>`}<h1>Añadir tema</h1><p class="muted">Sube los apuntes y, si la tienes, la autoevaluación. Claude prepara el resumen, los recursos interactivos y el banco de preguntas.</p></div>
-    ${!AI.hasKey() ? `<div class="callout warn small">Para crear temas desde aquí, añade tu clave de la API de Claude en <button type="button" class="link" data-act="go" data-v="settings">Ajustes</button>.</div>` : ""}
-    <div class="field"><label for="nt_s">Asignatura</label><select class="input" id="nt_s">${sb.map((s, i) => `<option value="${esc(s.id)}" ${s.id === sid0 ? "selected" : ""}>${i + 1}. ${esc(s.short)}</option>`).join("")}<option value="__new">Otra asignatura…</option></select></div>
-    <div class="field" id="nt_sn_w" ${sb.length ? "hidden" : ""}><label for="nt_sn">Nombre de la nueva asignatura</label><input class="input" id="nt_sn" placeholder="Seguridad en el trabajo"></div>
-    <div class="row" style="display:grid;grid-template-columns:110px minmax(0,1fr);gap:10px"><div class="field"><label for="nt_c">Código</label><input class="input" id="nt_c" value="${esc(p.code || nextCode(sid0))}" data-auto="1"></div><div class="field"><label for="nt_t">Título (opcional)</label><input class="input" id="nt_t" placeholder="Lo propone Claude si lo dejas vacío"></div></div>
-    <div class="field"><label for="nt_f">Apuntes (PDF o texto)</label><input class="input" type="file" id="nt_f" accept=".pdf,.txt,.md"><span class="small muted">O pega el texto:</span><textarea class="input" id="nt_x" placeholder="Pega aquí el contenido del tema"></textarea></div>
-    <div class="field"><label for="nt_a">Autoevaluación (opcional)</label><input class="input" type="file" id="nt_a" accept=".pdf,.txt"></div>
-    ${steps ? `<ul class="steps">${steps.map(s => `<li class="${s.st || ""}"><span class="dot"></span><span>${esc(s.l)}</span></li>`).join("")}</ul>` : ""}
-    ${p.error ? `<div class="callout bad small">${esc(p.error)}</div>` : ""}
-    <button class="btn" type="submit" ${p.running || !AI.hasKey() ? "disabled" : ""}>${p.running ? "Creando el tema…" : "Crear tema"}</button>
-  </form>`;
-};
-function nextCode(sid) { const n = topicList().filter(t => t.subject === sid && /^T\d+$/.test(t.code || "")).map(t => +t.code.slice(1)); return "T" + ((n.length ? Math.max(...n) : 0) + 1); }
-
-/* ---------- Claude ---------- */
-function sampleErr(e) {
-  const c = e && e.code;
-  return ({ no_key: "Añade tu clave de la API de Claude en Ajustes (arriba a la derecha).", bad_key: "La clave de la API no es válida. Revísala en Ajustes.", no_credit: "Tu cuenta de la API de Anthropic no tiene saldo. Añade crédito en console.anthropic.com.", bad_model: "El modelo configurado no existe. Revisa config.js.", rate_limited: "Has llegado al límite de uso de la API. Prueba en un rato.", overloaded: "Claude está saturado ahora mismo. Prueba en un rato.", invalid_json: "La respuesta vino incompleta. Prueba otra vez o pide menos.", prompt_too_large: "El texto es demasiado largo. Prueba con menos páginas.", empty_completion: "Claude no devolvió nada. Prueba otra vez.", cancelled: "Detenido." })[c] || "Algo falló al hablar con Claude. Revisa tu conexión y prueba otra vez.";
-}
-const srcOf = (t, max = 90000) => (t.source || "").slice(0, max);
-function normQ(x, diff) {
-  if (!x || typeof x.q !== "string" || !Array.isArray(x.opts)) return null;
-  const opts = x.opts.map(o => String(o ?? "").trim()).filter(Boolean).slice(0, 5); let a = Number(x.a);
-  if (opts.length < 2 || !(a >= 0 && a < opts.length)) return null;
-  const d = ["facil", "media", "dificil"].includes(x.diff) ? x.diff : diff && diff !== "mix" ? diff : "media";
-  return { q: x.q.trim(), opts, a, exp: String(x.exp || "").trim(), diff: d };
-}
-function shuffleOpts(q) { const ord = shuffle(q.opts.map((_, i) => i)); return { ...q, opts: ord.map(i => q.opts[i]), a: ord.indexOf(q.a) }; }
-const DIFF_RULES = "Fácil: un dato directo de los apuntes. Media: distinguir normas, convenios, órganos o fechas parecidas. Difícil: un matiz fino, un detalle literal o combinar dos datos.";
-const Q_RULES = "4 opciones por pregunta, una sola correcta, como en el examen final. Distractores plausibles sacados del propio tema (otro número de directiva o convenio, otro año, otro órgano).";
-function qPrompt(t, n, diff, focus) {
-  const have = bank(t.id).questions.map(q => "- " + q.q).join("\n").slice(0, 12000);
-  return `Eres profesor del Máster Universitario en Prevención de Riesgos Laborales y preparas preguntas tipo test para el tema «${t.title}».
-Genera ${n} preguntas NUEVAS ${diff === "mix" ? "con dificultad variada (fácil, media y difícil a partes iguales)" : "de dificultad " + DIFF[diff].toLowerCase()}.${focus ? `\nCéntrate en: ${focus}.` : ""}
-Reglas:
-- Usa solo información de los APUNTES. Nada inventado.
-- ${Q_RULES}
-- "exp": 1-2 frases que expliquen por qué es correcta y citen la norma.
-- ${DIFF_RULES}
-- No repitas ni reformules estas preguntas que ya existen:
-${have || "(ninguna)"}
-Responde solo con un array JSON: [{"q":"enunciado","opts":["...","...","...","..."],"a":0,"exp":"...","diff":"facil|media|dificil"}]
-
-APUNTES:
-${srcOf(t)}`;
-}
-let genCtl = null;
-async function genRun() {
-  const t = S.topics[S.p.tid]; if (!t || !canAI()) return;
-  S.p.focus = $("#gfocus")?.value.trim() || "";
-  const n = S.p.n || 10, diff = S.p.diff || "media";
-  genCtl = new AbortController(); S.lock = true;
-  const P = S.p; const here = () => S.view === "gen" && S.p === P;
-  Object.assign(P, { running: true, error: null, status: "Claude está pensando…" }); render();
-  try {
-    const out = await S.sample.json(qPrompt(t, n, diff, P.focus), { signal: genCtl.signal, onText: () => { if (P.status !== "Claude está escribiendo…") { P.status = "Claude está escribiendo…"; if (here()) render(); } } });
-    const arr = Array.isArray(out) ? out : (out && out.questions) || [];
-    const res = arr.map(x => normQ(x, diff)).filter(Boolean).map(q => ({ ...shuffleOpts(q), keep: true }));
-    Object.assign(P, { running: false, result: res, error: res.length ? null : "No llegó ninguna válida. Prueba otra vez." });
-  } catch (e) { Object.assign(P, { running: false, error: e && e.code === "cancelled" ? null : sampleErr(e) }); }
-  if (here()) render();
+function genRun() {
+  const t = S.topics[S.p.tid]; if (!t) return;
+  const shown = new Set((S.p.result || []).map(x => norm(x.q)));
+  let pool = genPool(t).filter(c => !shown.has(norm(c.q))); if (!pool.length) pool = genPool(t);
+  S.p.result = shuffle(pool).slice(0, S.p.n || 10).map(c => { const opts = shuffle([c.right, ...c.wrong]); return { q: c.q, opts, a: opts.indexOf(c.right), exp: c.exp, diff: c.diff, src: c.src, keep: true }; });
+  render();
 }
 async function genSave() {
   const t = S.topics[S.p.tid]; const keep = (S.p.result || []).filter(x => x.keep); if (!t || !keep.length) return;
   const b = clone(bank(t.id));
-  keep.forEach(x => b.questions.push({ id: rid(), q: x.q, opts: x.opts, a: x.a, exp: x.exp, diff: x.diff, origin: "claude" }));
+  keep.forEach(x => b.questions.push({ id: rid(), q: x.q, opts: x.opts, a: x.a, exp: x.exp, diff: x.diff, origin: "auto", ...(x.src ? { src: x.src } : {}) }));
   S.banks[t.id] = b;
   if (await writeBank(t.id)) { toast(`${keep.length} ${keep.length === 1 ? "añadida" : "añadidas"} a ${t.code}`); go("topic", { tid: t.id, tab: "banco" }); }
-}
-async function why() {
-  const r = S.run; const i = r.idx; const it = r.items[i]; const q = runQ(i); const t = S.topics[it.tid]; if (!q || !t) return;
-  S.p.why = i; const box = $("#whyBox"); if (box) box.querySelector("button")?.remove();
-  const show = txt => { const o = S.view === "run" && S.run === r && r.idx === i && $("#whyOut"); if (o) o.textContent = txt; };
-  show("Claude está pensando…");
-  const chosen = r.answers[i];
-  const prompt = `Eres profesor del Máster en Prevención de Riesgos Laborales. Un alumno responde un test. Explícale en 3-5 frases, en español y tuteando, ${chosen === q.a ? "por qué su respuesta es correcta y una forma de recordarlo" : "por qué la respuesta correcta lo es, por qué falla la que eligió y un truco para no confundirlas"}. Básate solo en los apuntes. Sin títulos ni listas.
-
-Pregunta: ${q.q}
-Opciones:
-${q.opts.map((o, k) => `${k + 1}. ${o}`).join("\n")}
-Correcta: ${q.opts[q.a]}
-Elegida por el alumno: ${chosen == null ? "ninguna" : q.opts[chosen]}
-
-APUNTES:
-${srcOf(t, 60000)}`;
-  try { await S.sample(prompt, { modelTier: "quick", onText: ({ text }) => show(text) }); }
-  catch (e) { show((e && e.text) || sampleErr(e)); }
-}
-
-/* PDF / text extraction */
-let pdfjsP = null;
-function loadPdfJs() {
-  if (pdfjsP) return pdfjsP;
-  pdfjsP = new Promise((res, rej) => { const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"; s.onload = () => { try { window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; res(window.pdfjsLib); } catch (e) { rej(e); } }; s.onerror = () => { pdfjsP = null; rej(new Error("No se pudo cargar el lector de PDF")); }; document.head.appendChild(s); });
-  return pdfjsP;
-}
-async function fileText(file) {
-  if (/\.pdf$/i.test(file.name) || file.type === "application/pdf") {
-    const lib = await loadPdfJs(); const doc = await lib.getDocument({ data: await file.arrayBuffer() }).promise; let out = "";
-    for (let i = 1; i <= doc.numPages; i++) { const pg = await doc.getPage(i); const tc = await pg.getTextContent(); out += tc.items.map(it => it.str + (it.hasEOL ? "\n" : " ")).join("") + "\n\n"; }
-    return out.replace(/[ \t]{2,}/g, " ").trim();
-  }
-  return (await file.text()).trim();
-}
-// Las preguntas de la autoevaluación se copian tal cual, con las opciones que traigan (normalmente 3).
-function autoPrompt(text, src) {
-  return `Este texto es una autoevaluación tipo test del Máster en Prevención de Riesgos Laborales. Extrae TODAS sus preguntas, con el enunciado y las opciones tal cual (sin la letra delante).
-La respuesta correcta suele ir marcada (✓, "correcta", asterisco, negrita…). Si no está marcada, dedúcela de los APUNTES y pon "unsure": true.
-"exp": 1-2 frases sobre por qué es la correcta, basadas en los apuntes. "diff": facil, media o dificil según ${DIFF_RULES}
-Responde solo con un array JSON: [{"q":"...","opts":["..."],"a":0,"exp":"...","diff":"media","unsure":false}]
-
-AUTOEVALUACIÓN:
-${text.slice(0, 60000)}
-
-APUNTES:
-${(src || "").slice(0, 80000)}`;
-}
-const officialFrom = arr => (Array.isArray(arr) ? arr : arr?.questions || []).map(x => { const q = normQ(x); return q && { id: rid(), ...q, origin: "oficial", ...(x.unsure ? { check: true } : {}) }; }).filter(Boolean);
-async function importAuto(tid, file) {
-  const t = S.topics[tid]; if (!t || !canAI()) return;
-  S.busy = { kind: "auto", msg: "Leyendo la autoevaluación…" }; render();
-  try {
-    const text = await fileText(file);
-    S.busy.msg = "Claude está extrayendo las preguntas…"; render();
-    const qs = officialFrom(await S.sample.json(autoPrompt(text, t.source)));
-    if (!qs.length) throw { code: "empty_completion" };
-    const b = clone(bank(tid)); b.questions.push(...qs); S.banks[tid] = b; await writeBank(tid);
-    S.busy = null; toast(`${qs.length} preguntas oficiales añadidas`); render();
-  } catch (e) { S.busy = { kind: "auto", msg: e && e.code ? sampleErr(e) : "No se pudo leer el archivo. Prueba con un PDF con texto seleccionable o un .txt." }; render(); }
-}
-async function createTopic(form) {
-  if (!canAI()) return;
-  const P = S.p; const here = () => S.view === "newtopic" && S.p === P;
-  const sv = $("#nt_s").value; const isNew = sv === "__new" || !subjects().length;
-  const sname = isNew ? $("#nt_sn").value.trim() : subjects().find(s => s.id === sv)?.name;
-  if (isNew && !sname) { P.error = "Escribe el nombre de la asignatura."; return keepForm(render); }
-  const f = $("#nt_f").files[0], fa = $("#nt_a").files[0]; const pasted = $("#nt_x").value.trim();
-  if (!f && !pasted) { P.error = "Sube los apuntes o pega el texto del tema."; return keepForm(render); }
-  const code = $("#nt_c").value.trim() || nextCode(sv); const title0 = $("#nt_t").value.trim();
-  const steps = [{ l: "Leer los archivos" }, { l: "Resumen y recursos interactivos" }, { l: "Banco de preguntas" }, ...(fa ? [{ l: "Preguntas de la autoevaluación" }] : []), { l: "Guardar el tema" }];
-  Object.assign(P, { steps, running: true, error: null, code }); S.lock = true; keepForm(render);
-  const step = (i, st) => { steps[i].st = st; if (here()) { const ul = $(".steps"); if (ul) ul.outerHTML = `<ul class="steps">${steps.map(s => `<li class="${s.st || ""}"><span class="dot"></span><span>${esc(s.l)}</span></li>`).join("")}</ul>`; } };
-  let k = 0;
-  try {
-    step(k, "run"); let src = pasted; if (f) src = (await fileText(f)) + (pasted ? "\n\n" + pasted : ""); const auto = fa ? await fileText(fa) : ""; src = src.slice(0, 100000);
-    if (src.length < 300) throw new Error("El texto de los apuntes es muy corto. Si el PDF es escaneado, pega el texto."); step(k++, "done");
-    step(k, "run");
-    const A = await S.sample.json(`Eres profesor del Máster Universitario en Prevención de Riesgos Laborales. A partir de los APUNTES crea el material de estudio del tema ${code}${title0 ? ` («${title0}»)` : ""}. Español, frases cortas, sin relleno.
-Devuelve solo un objeto JSON:
-{"title":"título corto del tema","summary":[{"h":"título del bloque","keys":[{"r":"referencia corta: norma, artículo, año o cifra (o vacío)","t":"idea clave en una frase"}],"trap":"la confusión típica en el test, en una frase"}],
-"resources":[{"type":"match","title":"...","pairs":[["término","definición corta"]]},{"type":"classify","title":"...","categories":["..."],"items":[["elemento",0]]},{"type":"order","title":"...","items":[["hecho","año o detalle"]]}]}
-Reglas: 4-7 bloques con 3-6 keys cada uno; todo debe salir de los apuntes; 2-4 recursos con 5-10 pares o elementos; usa "order" solo si hay una cronología o secuencia real (en orden correcto); en "classify" el número es el índice de la categoría.
-
-APUNTES:
-${src}`);
-    step(k++, "done");
-    step(k, "run");
-    const B = await S.sample.json(`Eres profesor del Máster Universitario en Prevención de Riesgos Laborales. Con los APUNTES del tema ${code}, crea 24 preguntas tipo test (8 fáciles, 8 medias, 8 difíciles).
-${Q_RULES} "exp" de 1-2 frases citando la norma. ${DIFF_RULES}
-Solo información de los apuntes.
-Devuelve solo un objeto JSON: {"questions":[{"q":"...","opts":["...","...","...","..."],"a":0,"exp":"...","diff":"facil"}]}
-
-APUNTES:
-${src}`);
-    step(k++, "done");
-    let official = [];
-    if (fa) { step(k, "run"); official = officialFrom(await S.sample.json(autoPrompt(auto, src))); step(k++, "done"); }
-    step(k, "run");
-    const tid = "t" + rid(); const sid = isNew ? "s" + rid() : sv;
-    const summary = (A && Array.isArray(A.summary) ? A.summary : []).filter(b => b && b.h).map(b => ({ h: String(b.h), keys: (b.keys || []).map(x => typeof x === "string" ? { t: x } : { r: String(x.r || ""), t: String(x.t || "") }).filter(x => x.t), trap: String(b.trap || "") }));
-    const resources = (A && Array.isArray(A.resources) ? A.resources : []).filter(r => r && ((r.type === "match" && Array.isArray(r.pairs) && r.pairs.length > 1) || (r.type === "classify" && Array.isArray(r.items) && Array.isArray(r.categories) && r.items.every(it => Array.isArray(it) && it[1] >= 0 && it[1] < r.categories.length)) || (r.type === "order" && Array.isArray(r.items) && r.items.length > 1)));
-    const subj = isNew ? null : subjects().find(s => s.id === sid);
-    const short = subj ? subj.short : sname.length > 34 ? sname.slice(0, 32) + "…" : sname;
-    const topic = { subject: sid, subjectName: sname, subjectShort: short, code, title: title0 || String(A?.title || code), order: +(code.match(/\d+/)?.[0] || 99), createdAt: Date.now(), summary, resources, source: src };
-    if (isNew) await guarded("subject:" + sid, () => S.db.doc("subjects/" + sid).set({ name: sname, short, order: Math.max(0, ...Object.values(S.subjects).map(s => s.order || 0)) + 1 }));
-    const bk = { questions: [...official, ...((B && B.questions) || []).map(x => normQ(x)).filter(Boolean).map(q => ({ id: rid(), ...shuffleOpts(q), origin: "claude" }))] };
-    await guarded("topic:" + tid, () => S.db.doc("topics/" + tid).set(topic));
-    await guarded("bank:" + tid, () => S.db.doc("banks/" + tid).set(bk));
-    step(k, "done");
-    S.topics[tid] = { id: tid, ...topic }; S.banks[tid] = bk;
-    toast(`${code} creado`); go("topic", { tid, tab: "resumen" });
-  } catch (e) {
-    step(k, "fail"); Object.assign(P, { running: false, error: e && e.code ? sampleErr(e) : (e && e.message) || "No se pudo crear el tema." });
-    if (here()) { S.lock = false; keepForm(render); } else toast(`No se pudo crear ${code}: ${P.error}`);
-  }
 }
 
 /* ---------- actions ---------- */
@@ -532,12 +392,8 @@ const A = {
   tab: el => { S.p = { tid: S.p.tid, tab: el.dataset.k }; render(); },
   backTopic: el => go("topic", { tid: S.p.tid, tab: el.dataset.k }),
   bf: el => { S.p.f = el.dataset.k; render(); },
-  delTopicAsk: () => { S.p.delTopic = true; render(); },
-  delTopicNo: () => { S.p.delTopic = false; render(); },
-  delTopic: async el => { const tid = el.dataset.t; const sid = S.topics[tid]?.subject; await guarded("bank:" + tid, () => S.db.doc("banks/" + tid).delete()); await guarded("topic:" + tid, () => S.db.doc("topics/" + tid).delete()); delete S.topics[tid]; delete S.banks[tid]; S.setup.tids = S.setup.tids.filter(x => x !== tid); saveSetup(); toast("Tema eliminado"); go("subject", { sid }); },
   practiceTopic: el => { S.setup.tids = [el.dataset.t]; S.setup.mode = "practica"; saveSetup(); go("setup"); },
   quick: el => { const s = subjects().find(x => x.id === el.dataset.s); S.setup.tids = s ? s.topics.map(t => t.id) : []; S.setup.mode = el.dataset.m; saveSetup(); go("setup"); },
-  newTopicFor: el => go("newtopic", { sid: el.dataset.s }),
   set: el => { S.setup[el.dataset.f] = el.dataset.k; if (el.dataset.f === "mode") S.setup.min = null; saveSetup(); render(); },
   setSub: el => { S.setup.tids = toggleSubj(S.setup.tids, el.dataset.s); saveSetup(); render(); },
   setT: el => { const t = el.dataset.t, a = S.setup.tids; S.setup.tids = a.includes(t) ? a.filter(x => x !== t) : [...a, t]; saveSetup(); render(); },
@@ -552,21 +408,18 @@ const A = {
     if (r.mode === "examen") { r.answers[i] = r.answers[i] === o ? null : o; render(); return; }
     if (r.shown[i]) return; r.answers[i] = o; r.shown[i] = true; render();
   },
-  next: () => { S.run.idx = Math.min(S.run.items.length - 1, S.run.idx + 1); S.p.why = null; S.p.submitAsk = false; render(); window.scrollTo(0, 0); },
+  next: () => { S.run.idx = Math.min(S.run.items.length - 1, S.run.idx + 1); S.p.submitAsk = false; render(); window.scrollTo(0, 0); },
   prev: () => { S.run.idx = Math.max(0, S.run.idx - 1); render(); window.scrollTo(0, 0); },
   jump: el => { S.run.idx = +el.dataset.k; render(); window.scrollTo(0, 0); },
   flag: () => { const r = S.run; r.flags[r.idx] = !r.flags[r.idx]; render(); },
   submitAsk: () => { S.p.submitAsk = true; render(); },
   submitNo: () => { S.p.submitAsk = false; render(); },
   finish: () => finishRun(false),
-  why: () => why(),
   retryWrong: () => { const R = S.lastResult; const items = R.rows.filter(x => !x.ok).map(x => ({ ...findQ(x.tid, x.qid), tid: x.tid })).filter(q => q.id); if (!items.length) return; S.run = buildRun({ ...S.setup, mode: "practica", n: 0 }, shuffle(items)); go("run"); },
-  gen: el => { const tid = el.dataset.t || topicList()[0]?.id; if (!tid) return; go("gen", { tid, n: 10, diff: "media" }); },
-  genSet: el => { S.p.focus = $("#gfocus")?.value || S.p.focus; S.p[el.dataset.f] = el.dataset.f === "n" ? +el.dataset.k : el.dataset.k; render(); },
+  gen: el => { const tid = el.dataset.t || topicList()[0]?.id; if (!tid) return; go("gen", { tid, n: 10 }); },
+  genSet: el => { S.p[el.dataset.f] = +el.dataset.k; render(); },
   genRun: () => genRun(),
-  genStop: () => genCtl && genCtl.abort(),
   genSave: () => genSave(),
-  importAuto: () => $("#autoFile")?.click(),
   editq: el => go("editq", { tid: el.dataset.t, qid: el.dataset.q || null }),
   segPick: el => { el.parentElement.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b === el)); },
   delAsk: () => { S.p.del = true; keepForm(() => render()); },
@@ -586,14 +439,12 @@ function keepForm(fn) {
   for (const id in vals) { const i = document.getElementById(id); if (!i) continue; if (i.type === "radio") i.checked = vals[id]; else i.value = vals[id]; }
   for (const id in files) { const i = document.getElementById(id); if (i && files[id] && files[id].length) i.files = files[id]; }
   if (segK) $("#q_d").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.k === segK));
-  const sw = $("#nt_sn_w"); if (sw) sw.hidden = $("#nt_s").value !== "__new";
 }
 const C = {
   exmin: el => { const v = Math.max(1, Math.min(240, +el.value || 1)); S.setup.min = v; saveSetup(); },
   pen: el => { S.setup.penalty = el.checked; saveSetup(); },
   shuf: el => { S.setup.shuf = el.checked; saveSetup(); },
   genKeep: el => { S.p.result[+el.dataset.i].keep = el.checked; const btn = $('[data-act="genSave"]'); const n = S.p.result.filter(x => x.keep).length; if (btn) { btn.textContent = `Añadir ${n} al tema`; btn.disabled = !n; } },
-  autoFile: el => { const f = el.files[0]; if (f) importAuto(el.dataset.t, f); el.value = ""; }
 };
 document.addEventListener("click", e => { const el = e.target.closest("[data-act]"); if (!el || el.disabled) return; const fn = A[el.dataset.act]; if (fn) { e.preventDefault(); fn(el, e); } });
 document.addEventListener("keydown", e => {
@@ -604,8 +455,7 @@ document.addEventListener("keydown", e => {
   else if ((e.key === "Enter" || e.key === "ArrowRight") && (r.mode === "examen" || r.shown[r.idx]) && r.idx < r.items.length - 1) A.next();
   else if (e.key === "ArrowLeft" && r.mode === "examen" && r.idx > 0) A.prev();
 });
-document.addEventListener("change", e => { const el = e.target.closest("[data-chg]"); if (el && C[el.dataset.chg]) C[el.dataset.chg](el, e); if (e.target.id === "nt_s") { const w = $("#nt_sn_w"); if (w) w.hidden = e.target.value !== "__new"; const c = $("#nt_c"); if (c && c.dataset.auto) c.value = nextCode(e.target.value); } });
-document.addEventListener("input", e => { if (e.target.id === "nt_c") delete e.target.dataset.auto; });
+document.addEventListener("change", e => { const el = e.target.closest("[data-chg]"); if (el && C[el.dataset.chg]) C[el.dataset.chg](el, e); });
 document.addEventListener("focusin", e => { if (e.target.closest("form")) S.lock = true; });
 document.addEventListener("submit", async e => {
   e.preventDefault(); const f = e.target;
@@ -616,33 +466,24 @@ document.addEventListener("submit", async e => {
     if (!kept.some(x => x.i === ai)) return toast("Marca como correcta una respuesta con texto.");
     const diff = $("#q_d [aria-pressed=true]")?.dataset.k || "media";
     const b = clone(bank(tid)); const old = S.p.qid ? b.questions.find(x => x.id === S.p.qid) : null;
-    const nq = { id: old ? old.id : rid(), q, opts: kept.map(x => x.o), a: kept.findIndex(x => x.i === ai), exp: $("#q_e").value.trim(), diff, origin: old ? old.origin : "propia" };
+    const nq = { id: old ? old.id : rid(), q, opts: kept.map(x => x.o), a: kept.findIndex(x => x.i === ai), exp: $("#q_e").value.trim(), diff, origin: old ? old.origin : "propia", ...(old && old.src ? { src: old.src } : {}) };
     if (old) b.questions[b.questions.indexOf(old)] = nq; else b.questions.push(nq);
     S.banks[tid] = b; if (await writeBank(tid)) { toast("Pregunta guardada"); go("topic", { tid, tab: "banco" }); }
-  } else if (f.id === "fnt") createTopic(f);
-  else if (f.id === "fkey") { const k = $("#k_key").value.trim(); AI.setKey(k); if (!k) { S.p.keyMsg = null; return render(); } Object.assign(S.p, { keyMsg: "Probando la clave…", keyOk: null }); render(); try { await AI.test(); Object.assign(S.p, { keyMsg: "Clave correcta. Ya puedes generar con Claude.", keyOk: true }); } catch (err) { Object.assign(S.p, { keyMsg: sampleErr(err), keyOk: false }); } if (S.view === "settings") render(); }
+  }
 });
 
 /* ----- settings ----- */
 VIEWS.settings = () => {
-  const key = AI.getKey();
   return `<div class="stack-lg">
     <div class="stack"><p class="eyebrow">Configuración</p><h1>Ajustes</h1></div>
-    <section class="stack"><h2>Claude</h2>
-      <p class="muted">Genera preguntas, temas nuevos y explicaciones. Usa tu clave de la API de Anthropic (console.anthropic.com → API Keys). Se guarda solo en este navegador y el uso se paga aparte de la suscripción de Claude.</p>
-      <form class="stack" id="fkey"><div class="field"><label for="k_key">Clave de API</label><input class="input mono" id="k_key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" value="${esc(key)}"></div>
-        <div class="row"><button class="btn" type="submit">Guardar y probar</button>${key ? `<button class="btn quiet" type="button" data-act="delKey" style="color:var(--bad)">Quitar clave</button>` : ""}</div>
-        ${S.p.keyMsg ? `<div class="callout ${S.p.keyOk ? "ok" : S.p.keyOk === false ? "bad" : "accent"} small">${esc(S.p.keyMsg)}</div>` : ""}</form>
-    </section>
     <section class="stack"><h2>Copia de seguridad</h2>
-      <p class="muted">Los temas y preguntas que añadas se guardan solo en este dispositivo. Descarga una copia para pasarlos a otro o para recuperarlos.</p>
+      <p class="muted">Las preguntas que generes o añadas se guardan solo en este dispositivo. Descarga una copia para pasarlas a otro o para recuperarlas.</p>
       <div class="row"><button class="btn ghost" data-act="exportAll">Descargar copia</button><button class="btn ghost" data-act="importAsk">Restaurar copia</button></div>
       <input type="file" id="impFile" accept=".json,application/json" hidden data-chg="impFile">
     </section>
   </div>`;
 };
 Object.assign(A, {
-  delKey: () => { AI.setKey(""); S.p.keyMsg = null; render(); },
   importAsk: () => $("#impFile")?.click(),
   exportAll: () => {
     const blob = new Blob([JSON.stringify(Store.exportAll(), null, 1)], { type: "application/json" });

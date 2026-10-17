@@ -116,6 +116,9 @@ textarea.input{min-height:96px;resize:vertical;line-height:1.45}
 .callout.warn{background:var(--warn-soft)}
 .callout.ok{background:var(--ok-soft)}
 .callout.bad{background:var(--bad-soft)}
+.where{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-top:2px}
+.where svg{width:18px;height:18px;flex:none;color:var(--muted)}
+.where .small{color:var(--muted)}
 
 /* summary */
 .block{display:flex;flex-direction:column;gap:12px;padding-bottom:24px;border-bottom:1px solid var(--line)}
@@ -153,7 +156,6 @@ textarea.input{min-height:96px;resize:vertical;line-height:1.45}
 .grid-n button.cur{border-color:var(--ink);border-width:2px}
 .grid-n button.flag::after{content:"";position:absolute;top:4px;right:4px;width:6px;height:6px;border-radius:50%;background:var(--warn)}
 .explain{font-size:15px}
-.ai{white-space:pre-wrap;font-size:15px}
 
 /* subject cards */
 .subjects{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
@@ -193,13 +195,6 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .empty{padding:28px 0;text-align:center;color:var(--muted)}
 .skel{height:14px;border-radius:7px;background:var(--surface-2)}
 .confirm{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.steps{display:flex;flex-direction:column;gap:8px;list-style:none;margin:0;padding:0}
-.steps li{display:flex;gap:10px;align-items:center;font-size:15px}
-.steps .dot{width:10px;height:10px;border-radius:50%;background:var(--surface-2);flex:none}
-.steps li.run .dot{background:var(--accent);animation:pulse 1s infinite alternate}
-.steps li.done .dot{background:var(--ok)}
-.steps li.fail .dot{background:var(--bad)}
-@keyframes pulse{from{opacity:.35}to{opacity:1}}
 .gen-q{display:grid;grid-template-columns:24px minmax(0,1fr);gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
 .gen-q input{width:20px;height:20px;accent-color:var(--accent);margin-top:2px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--nav-h) + 16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;z-index:30;max-width:calc(100% - 32px)}

@@ -41,12 +41,12 @@
     }
   };
 
-  // La app no guarda progreso: borra el de versiones anteriores (progreso, test a medias) y las tarjetas.
+  // La app no guarda progreso: borra lo de versiones anteriores (progreso, test a medias, tarjetas y la clave de API).
   function dropLegacy() {
     let changed = false;
     for (const p of Object.keys(docs)) if (p.startsWith("data/")) { delete docs[p]; changed = true; }
     for (const p of Object.keys(docs)) if (p.startsWith("banks/") && docs[p].cards) { delete docs[p].cards; changed = true; }
-    try { localStorage.removeItem("prl:dirty"); } catch (_) {}
+    try { localStorage.removeItem("prl:dirty"); localStorage.removeItem("prl:apikey"); } catch (_) {}
     if (changed) saveLocal();
   }
 
