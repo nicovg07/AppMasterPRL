@@ -14,7 +14,7 @@ App web para estudiar el Máster Universitario en Prevención de Riesgos Laboral
   - Explica los fallos.
   - Crea temas nuevos a partir de los apuntes en PDF y de la autoevaluación.
 
-La app no guarda progreso: cada test empieza de cero y su resultado se ve al terminar.
+La app no guarda progreso: cada test empieza de cero y su resultado se ve al terminar. Tiene modo claro y oscuro (botón de la cabecera).
 
 Es un sitio estático (HTML, CSS y JavaScript sin compilar), así que funciona en GitHub Pages sin servidor.
 
@@ -54,6 +54,7 @@ python3 -m http.server 8000
 | `ai.js` | Conexión con la API de Anthropic |
 | `config.js` | Modelos de Claude |
 | `data/seed.json` | Las 6 asignaturas y los temas preparados (asignatura 1, T1 a T10) |
-| `sw.js`, `manifest.webmanifest`, `icons/` | Instalación como app y uso sin conexión |
+| `sw.js`, `manifest.webmanifest`, `icons/` | Instalación como app, uso sin conexión, favicon e iconos |
+| `img/portada.webp` | Imagen de portada de Inicio |
 
 Para añadir temas, usa *Añadir tema* dentro de una asignatura, o añádelos a `data/seed.json`. Al abrir la app se añade lo nuevo de ese archivo sin tocar lo que hayas creado o borrado. Lo que crees en la app se guarda solo en ese dispositivo; para llevarlo a otro, usa *Ajustes → Copia de seguridad*.

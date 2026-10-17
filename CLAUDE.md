@@ -10,7 +10,9 @@ Se publica en GitHub Pages y se usa en el móvil y el ordenador.
 - **Sitio estático sin compilación**: HTML, CSS y JavaScript sin frameworks. No añadas npm, bundlers ni React. Las librerías externas se cargan por CDN con versión fija; ahora mismo solo pdf.js (cdnjs), bajo demanda.
 - **Simple a propósito**: sin progreso guardado (ni estadísticas, ni historial, ni test a medias), sin tarjetas y sin sincronización entre dispositivos. No los vuelvas a añadir sin que Nico lo pida.
 - **Diseño**: blanco y minimalista, poco texto e ideas clave visibles.
-  - Un solo color de acento, el azul de señal de obligación (`--accent`).
+  - Azul de señal de obligación (`--accent`) para las acciones (botones, enlaces) y amarillo de seguridad (`--hi`, texto encima en `--hi-ink`) para los detalles: códigos de tema, franja de las tarjetas de asignatura, pestaña activa, barra inferior y barras de progreso.
+  - Logo (calavera con casco) en `icons/`; portada de Inicio en `img/portada.webp`.
+  - Botón de tema en la cabecera: sigue al sistema hasta que se pulsa y entonces guarda `prl:theme` (`light`/`dark`) y pone `data-theme` en `<html>`; un script en el `<head>` lo aplica antes de pintar.
   - Las referencias legales van en chips monoespaciados (`.ref`).
   - Todos los colores son tokens en `:root` de `styles.css`, con tema oscuro. No uses colores literales en componentes.
   - Tiene que funcionar a 400 px de ancho, sin scroll horizontal.
@@ -36,7 +38,7 @@ Se publica en GitHub Pages y se usa en el móvil y el ordenador.
   - Hay delegación de eventos: `data-act="x"` → `A.x(el)`, `data-chg="x"` → `C.x(el)`, y los formularios se gestionan en el listener de `submit`.
   - Navegación con `go(vista, params)`.
   - Las escrituras se encolan por documento con `guarded(key, fn)` y `enqueue`.
-  - Solo se recuerdan las preferencias del test (`prl:setup`) y la clave de API.
+  - Solo se recuerdan las preferencias del test (`prl:setup`), el tema (`prl:theme`) y la clave de API.
 
 ## Modelo de datos
 - `subjects/<sid>`: `{name, short, order}`. Las 6 asignaturas del máster (`a1`…`a6`) vienen en `seed.subjects` y existen aunque no tengan temas. `subjects()` en `app.js` las devuelve en orden con sus temas, y añade al final las que solo aparezcan en algún tema. Los códigos de tema (`T1`, `T2`…) se numeran dentro de cada asignatura.

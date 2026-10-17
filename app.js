@@ -18,6 +18,8 @@ function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = fal
 const ICON = {
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>',
   test: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="m8 9 1.5 1.5L12 8M8 15.5l1.5 1.5L12 14.5M14.5 9.5H17M14.5 16H17"/></svg>',
+  sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11z"/></svg>',
   tri: '<svg class="tri" viewBox="0 0 18 16" aria-hidden="true"><path d="M9 1 17 15H1z" fill="none" stroke="var(--warn)" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 6v4" stroke="var(--warn)" stroke-width="1.6" stroke-linecap="round"/><circle cx="9" cy="12.4" r=".9" fill="var(--warn)"/></svg>'
 };
 
@@ -54,9 +56,20 @@ function enqueue(key, fn) { const p = (chains[key] || Promise.resolve()).then(fn
 async function guarded(key, fn) { try { await enqueue(key, fn); return true; } catch (e) { console.warn(e); toast("No se pudo guardar. Revisa que el navegador permita guardar datos de este sitio."); return false; } }
 function writeBank(tid) { const b = { ...clone(bank(tid)) }; return guarded("bank:" + tid, () => S.db.doc("banks/" + tid).set(b)); }
 
+/* Tema claro u oscuro: sigue al sistema hasta que se pulsa el botón; entonces se recuerda la elección. */
+const isDark = () => (document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) === "dark";
+function paintTheme() {
+  const b = $("#themeBtn"), dark = isDark();
+  if (b) { b.innerHTML = dark ? ICON.sun : ICON.moon; b.setAttribute("aria-label", dark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"); b.title = b.getAttribute("aria-label"); }
+  const bg = getComputedStyle(document.body).backgroundColor;
+  if (document.documentElement.dataset.theme) document.querySelectorAll('meta[name="theme-color"]').forEach(m => m.content = bg);
+}
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", paintTheme);
+
 function onDbErr(e) { console.warn("db", e); if (e && e.code === "revoked") { S.mode = "nodb"; render(); } }
 
 async function boot() {
+  paintTheme();
   render();
   const db = await Store.init();
   S.sample = AI.sample;
@@ -94,7 +107,8 @@ VIEWS.home = () => {
   if (contentLoading()) return loadingView();
   const all = subjects();
   if (!all.length) return `<div class="stack-lg"><div class="stack"><p class="eyebrow">Máster PRL · Nebrija</p><h1>Empieza por tu primer tema</h1><p class="muted">Sube los apuntes y la autoevaluación de un tema y Claude prepara el resumen, los recursos y el banco de preguntas.</p></div><button class="btn" data-act="go" data-v="newtopic">Añadir tema</button></div>`;
-  return `<div class="stack-lg"><div class="stack"><p class="eyebrow">Máster PRL · Nebrija</p><h1>Asignaturas</h1></div>
+  return `<div class="stack-lg"><img class="hero" src="img/portada.webp" alt="Máster en PRL · Prevención de Riesgos Laborales" width="1024" height="572">
+    <div class="stack" style="gap:4px"><p class="eyebrow">Universidad Nebrija</p><h1>Asignaturas</h1></div>
     <div class="subjects">${all.map((s, i) => `<button class="subj ${s.topics.length ? "" : "void"}" data-act="subject" data-s="${esc(s.id)}"><span class="eyebrow">Asignatura ${i + 1}</span><span class="subj-name">${esc(s.short)}</span><span class="small muted">${s.topics.length ? `${s.topics.length} ${s.topics.length === 1 ? "tema" : "temas"} · ${nQuestions(s)} preguntas` : "Sin temas todavía"}</span></button>`).join("")}</div>
   </div>`;
 };
@@ -510,6 +524,7 @@ ${src}`);
 /* ---------- actions ---------- */
 const saveSetup = () => lsSet("setup", S.setup);
 const A = {
+  theme: () => { const t = isDark() ? "light" : "dark"; document.documentElement.dataset.theme = t; lsSet("theme", t); paintTheme(); },
   go: el => go(el.dataset.v),
   nav: el => { const v = el.dataset.v; if (v === "setup" && S.run && !S.run.done) return go("run"); go(v); },
   subject: el => go("subject", { sid: el.dataset.s }),
