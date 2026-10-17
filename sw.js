@@ -1,6 +1,6 @@
 // Service worker: permite instalar la app y abrirla sin conexión.
 // Primero intenta la red (para recibir siempre la última versión) y, si no hay conexión, usa la copia guardada.
-const CACHE = "estudio-prl-v5";
+const CACHE = "estudio-prl-v6";
 const SHELL = ["./", "index.html", "styles.css", "config.js", "storage.js", "ai.js", "app.js", "data/seed.json", "manifest.webmanifest", "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png"];
 
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
