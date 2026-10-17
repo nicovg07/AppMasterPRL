@@ -22,7 +22,11 @@ Se publica en GitHub Pages y se usa en el móvil y el ordenador.
   - Las de la autoevaluación oficial (`origin:"oficial"`) se copian tal cual, con sus opciones (normalmente 3).
   - Los resúmenes se ordenan según cómo pregunta la autoevaluación de ese tema.
   - **Dónde está en los apuntes** (`src`): cada pregunta del seed lleva `{pg, sec}` y `t` si se explica en otro tema. `pg` es el número impreso al pie de la página del PDF (Nico estudia con los apuntes impresos; en T2 y T4 no coincide con la página del PDF; T8 lo lleva sin corchetes), y `sec` el apartado tal como aparece en el PDF. Al añadir un tema, calcúlalo buscando cada pregunta en el texto del PDF por páginas y revisa a mano las dudosas.
-- El repositorio es público: no subas claves ni el texto íntegro de los apuntes.
+- El repositorio es público: no subas claves ni el texto íntegro de los apuntes. **Nunca publiques los PDF originales de la Nebrija** (decisión de Nico).
+- **Apuntes visuales** (`apuntes/`): por cada tema, `<tid>-resumen` y `<tid>-memorizar`, en HTML y PDF, escritos a partir de los PDF del tema.
+  - Las fuentes son `apuntes/src/<tid>-<tipo>.html`: solo las secciones, y en la primera línea `<!--{"pags": "3–13", "ud": 1}-->`. `python tools/apuntes.py [tid] --pdf` añade la cabecera (código, título y asignatura salen del seed) y saca el PDF con Chrome o Edge headless. Revisa el PDF antes de subirlo.
+  - Estilo en `apuntes/apuntes.css`: `.sec` (cada una toma un color), `h2` con emoji y `.pg` (página impresa), `.box.clave` / `.box.ojo` / `.box.bien`, `table.t` dentro de `.tw`, `.cols` (`.c3`), `.card`, `.nums`/`.num`, `dl.defs`, `ol.tl`, `mark`, `.ref`. Pocos emojis y nada más nuevo que Emoji 12: Windows 10 pinta un cuadrado en el PDF (🪜, 🫁…).
+  - Cada tema del seed lo anuncia con `apuntes: ["resumen", "memorizar"]`. La vista `doc` los muestra en un iframe (`?embed=1&theme=…`) que toma la altura del contenido, con botón de descarga del PDF.
 
 ## Arquitectura
 - `storage.js` → `window.Store`. Es una mini base de documentos con rutas tipo Firestore, guardada solo en `localStorage` (`prl:db`). Los documentos tienen un número par de segmentos y las colecciones impar. Expone `Store.db.doc(path).get/set/update/delete/onSnapshot` y `Store.db.collection(path).onSnapshot`.
@@ -31,7 +35,7 @@ Se publica en GitHub Pages y se usa en el móvil y el ordenador.
   - `meta/seed` guarda los ids ya añadidos para no resucitar lo que se borra. Para cambiar contenido ya publicado, sube el `rev`; para añadir preguntas, usa ids nuevos.
 - `app.js`:
   - El estado está en `S`. Las vistas son funciones en `VIEWS.<nombre>` que devuelven HTML (escapa siempre con `esc()`).
-  - Pantallas: `home` (una tarjeta por asignatura) → `subject` (temas, Practicar, Simular examen) → `topic` (Resumen, Recursos, Preguntas). Además `setup`, `run`, `result`, `gen`, `editq` y `settings` (solo copia de seguridad). La barra inferior tiene Inicio y Test.
+  - Pantallas: `home` (una tarjeta por asignatura) → `subject` (temas, Practicar, Simular examen) → `topic` (Resumen, Recursos, Preguntas). La asignatura tiene dos pestañas: Temas y Apuntes. Además `doc` (visor de apuntes), `setup`, `run`, `result`, `gen`, `editq` y `settings` (solo copia de seguridad). La barra inferior tiene Inicio y Test.
   - `render()` repinta `#main`.
   - Hay delegación de eventos: `data-act="x"` → `A.x(el)`, `data-chg="x"` → `C.x(el)`, y los formularios se gestionan en el listener de `submit`.
   - Navegación con `go(vista, params)`.
@@ -43,7 +47,7 @@ Se publica en GitHub Pages y se usa en el móvil y el ordenador.
 - `subjects/<sid>`: `{name, short, order}`. Las 6 asignaturas del máster (`a1`…`a6`) vienen en `seed.subjects` y existen aunque no tengan temas. `subjects()` en `app.js` las devuelve en orden con sus temas, y añade al final las que solo aparezcan en algún tema. Los códigos de tema (`T1`, `T2`…) se numeran dentro de cada asignatura.
 - `topics/<tid>`:
   - Asignatura: `{subject, subjectName, subjectShort}` (copia de la asignatura, para mostrarla sin buscarla).
-  - Identificación: `{code: "T1", title, order, createdAt}`.
+  - Identificación: `{code: "T1", title, order, createdAt}`. Si tiene apuntes visuales: `apuntes: ["resumen", "memorizar"]`.
   - Contenido:
     - `summary: [{h, keys:[{r, t, src?}], trap}]` (`src` solo en las claves con referencia legal, que son las que usa el generador).
     - `resources: [...]`, de tres tipos:

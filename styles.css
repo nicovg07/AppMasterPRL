@@ -116,6 +116,7 @@ textarea.input{min-height:96px;resize:vertical;line-height:1.45}
 .callout.warn{background:var(--warn-soft)}
 .callout.ok{background:var(--ok-soft)}
 .callout.bad{background:var(--bad-soft)}
+.doc-frame{display:block;width:100%;min-height:70vh;border:0;background:var(--bg);margin-top:6px}
 .where{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-top:2px}
 .where svg{width:18px;height:18px;flex:none;color:var(--muted)}
 .where .small{color:var(--muted)}

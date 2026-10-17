@@ -20,6 +20,7 @@ const ICON = {
   test: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="m8 9 1.5 1.5L12 8M8 15.5l1.5 1.5L12 14.5M14.5 9.5H17M14.5 16H17"/></svg>',
   sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
   moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11z"/></svg>',
+  down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="18" height="18"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>',
   book: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 6.5C10.5 5 8 4.5 4 4.5v14c4 0 6.5.5 8 2 1.5-1.5 4-2 8-2v-14c-4 0-6.5.5-8 2zM12 6.5v14"/></svg>',
   tri: '<svg class="tri" viewBox="0 0 18 16" aria-hidden="true"><path d="M9 1 17 15H1z" fill="none" stroke="var(--warn)" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 6v4" stroke="var(--warn)" stroke-width="1.6" stroke-linecap="round"/><circle cx="9" cy="12.4" r=".9" fill="var(--warn)"/></svg>'
 };
@@ -92,6 +93,7 @@ function render() {
   $("#main").innerHTML = S.mode === "loading" ? loadingView() : S.mode === "nodb" ? noDbView() : v();
   renderNav();
   if (S.view === "run" && S.run && S.run.mode === "examen" && !S.run.done) startTimer();
+  if (S.view === "doc") fitDocFrame();
   const gear = $("#gear"); if (gear) gear.setAttribute("aria-current", S.view === "settings" ? "page" : "false");
 }
 function renderNav() {
@@ -121,13 +123,40 @@ VIEWS.subject = () => {
   if (contentLoading()) return loadingView();
   const all = subjects(); const i = all.findIndex(s => s.id === S.p.sid); const s = all[i];
   if (!s) return `<p class="empty">Esta asignatura ya no existe.</p>`;
+  const tab = S.p.tab === "apuntes" ? "apuntes" : "temas";
+  const docs = s.topics.filter(t => (t.apuntes || []).length);
   return `<div class="stack-lg"><div class="stack"><button class="back" data-act="go" data-v="home">← Asignaturas</button>
     <div class="stack" style="gap:4px"><p class="eyebrow">Asignatura ${i + 1}</p><h1>${esc(s.short)}</h1>${s.name !== s.short ? `<p class="small muted">${esc(s.name)}</p>` : ""}</div></div>
     ${s.topics.length ? `<div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><button class="btn" data-act="quick" data-m="practica" data-s="${esc(s.id)}">Practicar</button><button class="btn ghost" data-act="quick" data-m="examen" data-s="${esc(s.id)}">Simular examen</button></div>
-    <section class="stack"><h2>Temas</h2><div class="list">${s.topics.map(topicRow).join("")}</div></section>`
+    <div class="tabs" role="tablist">${[["temas", "Temas"], ["apuntes", "Apuntes"]].map(([k, l]) => `<button role="tab" aria-selected="${tab === k}" data-act="subject" data-s="${esc(s.id)}" data-k="${k}">${l}</button>`).join("")}</div>
+    ${tab === "apuntes" ? (docs.length ? `<p class="small muted">El resumen de cada tema y lo que hay que memorizar. Ábrelos aquí o descárgalos en PDF.</p><div class="list">${docs.map(docRow).join("")}</div>` : `<p class="empty">Aún no hay apuntes de esta asignatura.</p>`)
+      : `<div class="list">${s.topics.map(topicRow).join("")}</div>`}`
     : `<p class="empty">Aún no hay temas de esta asignatura.</p>`}
   </div>`;
 };
+/* Apuntes de cada tema (resumen y para memorizar): una página HTML para verla aquí y el mismo contenido en PDF. */
+const DOCS = { resumen: "Resumen", memorizar: "Para memorizar" };
+const docBase = (tid, kind) => `apuntes/${tid}-${kind}`;
+function docRow(t) {
+  return `<div class="item"><span class="ref accent">${esc(t.code || "T")}</span><div class="grow stack" style="gap:8px"><span class="item-title">${esc(t.title)}</span><div class="row" style="gap:8px">${t.apuntes.filter(k => DOCS[k]).map(k => `<button class="btn ghost sm" data-act="doc" data-t="${t.id}" data-k="${k}">${DOCS[k]}</button>`).join("")}</div></div></div>`;
+}
+VIEWS.doc = () => {
+  if (contentLoading()) return loadingView();
+  const t = S.topics[S.p.tid], kind = S.p.kind;
+  if (!t || !(t.apuntes || []).includes(kind) || !DOCS[kind]) return `<p class="empty">Estos apuntes no están disponibles.</p>`;
+  const other = t.apuntes.find(k => k !== kind && DOCS[k]);
+  const sname = subjects().find(s => s.id === t.subject)?.short || t.subjectShort || "Asignatura";
+  const file = `${t.code} ${DOCS[kind]} - ${t.title}.pdf`.replace(/[\/:*?"<>|]/g, "");
+  return `<div class="stack"><button class="back" data-act="subject" data-s="${esc(t.subject || "")}" data-k="apuntes">← ${esc(sname)} · Apuntes</button>
+    <div class="row" style="gap:8px"><a class="btn sm" href="${docBase(t.id, kind)}.pdf" download="${esc(file)}">${ICON.down}Descargar PDF</a>${other ? `<button class="btn ghost sm" data-act="doc" data-t="${t.id}" data-k="${other}">Ver ${kind === "resumen" ? "para memorizar" : "el resumen"}</button>` : ""}</div>
+    <iframe id="docFrame" class="doc-frame" src="${docBase(t.id, kind)}.html?embed=1&amp;theme=${isDark() ? "dark" : "light"}" title="${esc(t.code + " · " + DOCS[kind])}"></iframe></div>`;
+};
+// El iframe toma la altura de su contenido, así la página se desplaza entera (sin un scroll dentro de otro).
+function fitDocFrame() {
+  const f = $("#docFrame"); if (!f) return;
+  const fit = () => { try { const d = f.contentDocument; if (d && d.documentElement) f.style.height = d.documentElement.scrollHeight + "px"; } catch (_) {} };
+  f.addEventListener("load", () => { fit(); try { new ResizeObserver(fit).observe(f.contentDocument.body); } catch (_) {} });
+}
 function topicRow(t) {
   const n = bank(t.id).questions.length;
   return `<button class="item" data-act="topic" data-t="${t.id}"><span class="ref accent">${esc(t.code || "T")}</span><div class="grow stack" style="gap:4px"><span class="item-title">${esc(t.title)}</span><span class="small muted">${n} ${n === 1 ? "pregunta" : "preguntas"}</span></div></button>`;
@@ -384,10 +413,11 @@ async function genSave() {
 /* ---------- actions ---------- */
 const saveSetup = () => lsSet("setup", S.setup);
 const A = {
-  theme: () => { const t = isDark() ? "light" : "dark"; document.documentElement.dataset.theme = t; lsSet("theme", t); paintTheme(); },
+  theme: () => { const t = isDark() ? "light" : "dark"; document.documentElement.dataset.theme = t; lsSet("theme", t); paintTheme(); if (S.view === "doc") render(); },
   go: el => go(el.dataset.v),
   nav: el => { const v = el.dataset.v; if (v === "setup" && S.run && !S.run.done) return go("run"); go(v); },
-  subject: el => go("subject", { sid: el.dataset.s }),
+  subject: el => go("subject", { sid: el.dataset.s, tab: el.dataset.k || "temas" }),
+  doc: el => go("doc", { tid: el.dataset.t, kind: el.dataset.k }),
   topic: el => go("topic", { tid: el.dataset.t, tab: "resumen" }),
   tab: el => { S.p = { tid: S.p.tid, tab: el.dataset.k }; render(); },
   backTopic: el => go("topic", { tid: S.p.tid, tab: el.dataset.k }),
