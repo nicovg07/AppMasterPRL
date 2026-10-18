@@ -22,7 +22,8 @@ Se publica en GitHub Pages y se usa en el móvil y el ordenador.
   - Las de la autoevaluación oficial (`origin:"oficial"`) se copian tal cual, con sus opciones (normalmente 3).
   - Los resúmenes se ordenan según cómo pregunta la autoevaluación de ese tema.
   - **Dónde está en los apuntes** (`src`): cada pregunta del seed lleva `{pg, sec}` y `t` si se explica en otro tema. `pg` es el número impreso al pie de la página del PDF (Nico estudia con los apuntes impresos; en T2 y T4 no coincide con la página del PDF; T8 lo lleva sin corchetes), y `sec` el apartado tal como aparece en el PDF. Al añadir un tema, calcúlalo buscando cada pregunta en el texto del PDF por páginas y revisa a mano las dudosas.
-- El repositorio es público: no subas claves ni el texto íntegro de los apuntes. **Nunca publiques los PDF originales de la Nebrija** (decisión de Nico).
+- El repositorio es público: no subas claves ni el texto íntegro de los apuntes. **Nunca publiques los PDF originales de la Nebrija** (decisión de Nico). El 18-10-2026 se reescribió el historial para quitar el campo `source` (texto de los apuntes) de los primeros commits: no lo vuelvas a meter.
+- La web y los apuntes llevan `<meta name="robots" content="noindex, nofollow">` para que no salgan en buscadores (los PDF no pueden llevarlo).
 - **Apuntes visuales** (`apuntes/`): por cada tema, `<tid>-resumen` y `<tid>-memorizar`, en HTML y PDF, escritos a partir de los PDF del tema.
   - Las fuentes son `apuntes/src/<tid>-<tipo>.html`: solo las secciones, y en la primera línea `<!--{"pags": "3–13", "ud": 1}-->`. `python tools/apuntes.py [tid] --pdf` añade la cabecera (código, título y asignatura salen del seed) y saca el PDF con Chrome o Edge headless. Revisa el PDF antes de subirlo.
   - Estilo en `apuntes/apuntes.css`: `.sec` (cada una toma un color), `h2` con emoji y `.pg` (página impresa), `.box.clave` / `.box.ojo` / `.box.bien`, `table.t` dentro de `.tw`, `.cols` (`.c3`), `.card`, `.nums`/`.num`, `dl.defs`, `ol.tl`, `mark`, `.ref`. Pocos emojis y nada más nuevo que Emoji 12: Windows 10 pinta un cuadrado en el PDF (🪜, 🫁…).
@@ -31,6 +32,9 @@ Se publica en GitHub Pages y se usa en el móvil y el ordenador.
 ## Arquitectura
 - `storage.js` → `window.Store`. Es una mini base de documentos con rutas tipo Firestore, guardada solo en `localStorage` (`prl:db`). Los documentos tienen un número par de segmentos y las colecciones impar. Expone `Store.db.doc(path).get/set/update/delete/onSnapshot` y `Store.db.collection(path).onSnapshot`.
   - Al arrancar, `dropLegacy()` borra lo de versiones anteriores (progreso `data/…`, tarjetas y `prl:apikey`).
+  - Guarda 150 ms después del último cambio y también al ocultar la app (`pagehide`, `visibilitychange`). Si `localStorage` falla (memoria llena), lanza el evento `prl:savefail` y la app muestra un aviso.
+  - `Store.persist()` pide almacenamiento persistente (`navigator.storage.persist`); Ajustes muestra si está protegido.
+  - Hoy ocupa unos 540 KB en `localStorage` con una asignatura. Antes de cargar la tercera, conviene pasar a IndexedDB (el límite ronda los 5 MB).
   - Después, `applySeed()` añade lo nuevo de `data/seed.json`: asignaturas y temas que no estaban y preguntas con `id` nuevo. Si una asignatura, un tema o un banco del seed traen un `rev` mayor que el guardado, se actualizan. En un banco solo se actualizan las preguntas que vienen del seed; las del usuario se quedan.
   - `meta/seed` guarda los ids ya añadidos para no resucitar lo que se borra. Para cambiar contenido ya publicado, sube el `rev`; para añadir preguntas, usa ids nuevos.
 - `app.js`:
@@ -56,6 +60,9 @@ Se publica en GitHub Pages y se usa en el móvil y el ordenador.
       - `{type:"order", title, items:[[hecho, detalle]], src:[]}` en el orden correcto.
       - `src` va en paralelo a `pairs`/`items` (`{pg, sec}` o `null`); el generador lo copia a las preguntas que crea.
 - `banks/<tid>`: `{rev?, questions:[{id, q, opts:[], a, exp, diff:"facil|media|dificil", origin:"oficial|claude|auto|propia", src?:{t?, pg, sec}, check?}]}`. `whereHTML()` en `app.js` lo pinta al corregir y en el repaso.
+
+## Service worker
+`sw.js` va primero a la red, pero si hay copia y la red tarda más de 3 s (`TIMEOUT`), contesta con la copia; durante los 30 s siguientes contesta con la copia sin esperar y la red la actualiza por detrás. Sin conexión, la copia. Sube `CACHE` cada vez que cambies archivos que cachea.
 
 ## Probar
 `python3 -m http.server 8000` y abre `http://localhost:8000`. Tras cambiar archivos que cachea el service worker, sube la versión de `CACHE` en `sw.js` para que los móviles reciban la nueva versión.

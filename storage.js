@@ -12,8 +12,27 @@
   let listeners = [];       // { prefix, next }
 
   function loadLocal() { try { docs = JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch (_) { docs = {}; } }
-  let saveT = null;
-  function saveLocal() { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(LS_KEY, JSON.stringify(docs)); } catch (e) { console.warn("localStorage", e); } }, 150); }
+  // Se guarda 150 ms después del último cambio y, por si se cierra la app justo entonces, también al ocultarla.
+  // Si no se puede guardar (memoria llena o bloqueada) se lanza "prl:savefail" para que la app avise.
+  let saveT = null, pending = false;
+  function saveLocal() { pending = true; clearTimeout(saveT); saveT = setTimeout(flush, 150); }
+  function flush() {
+    clearTimeout(saveT); if (!pending) return; pending = false;
+    try { localStorage.setItem(LS_KEY, JSON.stringify(docs)); }
+    catch (e) { console.warn("localStorage", e); dispatchEvent(new CustomEvent("prl:savefail", { detail: e })); }
+  }
+  addEventListener("pagehide", flush);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flush(); });
+
+  // Pide al navegador que no borre los datos ni la copia sin conexión cuando le falte espacio.
+  // Devuelve true (protegidos), false (puede borrarlos) o null (el navegador no lo permite saber).
+  async function persist() {
+    try {
+      const st = navigator.storage; if (!st || !st.persisted) return null;
+      if (await st.persisted()) return true;
+      return st.persist ? await st.persist() : false;
+    } catch (_) { return null; }
+  }
   function inCollection(path, col) { const parts = path.split("/"); return path.startsWith(col + "/") && parts.length === col.split("/").length + 1; }
   function snapDoc(path) { const d = docs[path]; return { id: path.split("/").pop(), exists: d !== undefined, data: () => clone(d) }; }
   function emit() { for (const l of listeners) l.fire(); }
@@ -95,6 +114,7 @@
       await applySeed();
       return db;
     },
+    persist,
     exportAll: () => clone(docs),
     async importAll(obj) {
       if (!isObj(obj)) throw new Error("Archivo no válido");

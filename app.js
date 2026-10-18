@@ -13,7 +13,12 @@ const LET = "ABCDEFGH";
 const fmtNum = n => String(Math.round(n * 10) / 10).replace(".", ",");
 const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
 function fmtTime(sec) { sec = Math.max(0, Math.round(sec)); const m = Math.floor(sec / 60), s = sec % 60; return `${m}:${String(s).padStart(2, "0")}`; }
-function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 2600); }
+function toast(msg, ms = 2600) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, ms); }
+// Si el navegador no deja guardar (memoria llena o datos bloqueados), se avisa como mucho una vez cada 20 s.
+addEventListener("prl:savefail", () => {
+  if (Date.now() - (toast.failAt || 0) < 20000) return; toast.failAt = Date.now();
+  toast("No se ha podido guardar en este dispositivo. Puede que la memoria esté llena: descarga una copia en Ajustes.", 7000);
+});
 
 const ICON = {
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>',
@@ -79,6 +84,7 @@ async function boot() {
   render();
   const db = await Store.init();
   S.db = db; S.mode = "ok";
+  Store.persist().then(v => { S.persisted = v; if (S.view === "settings") render(); });
   db.collection("topics").onSnapshot(snap => { const t = {}; for (const d of snap.docs) if (d.exists) t[d.id] = { id: d.id, ...d.data() }; S.topics = t; S.ready.t = true; refresh(); }, onDbErr);
   db.collection("subjects").onSnapshot(snap => { const s = {}; for (const d of snap.docs) if (d.exists) s[d.id] = { id: d.id, ...d.data() }; S.subjects = s; S.ready.s = true; refresh(); }, onDbErr);
   db.collection("banks").onSnapshot(snap => { const b = {}; for (const d of snap.docs) if (d.exists) { const x = d.data(); b[d.id] = { ...(x.rev ? { rev: x.rev } : {}), questions: x.questions || [] }; } S.banks = b; S.ready.b = true; refresh(); }, onDbErr);
@@ -506,6 +512,9 @@ document.addEventListener("submit", async e => {
 VIEWS.settings = () => {
   return `<div class="stack-lg">
     <div class="stack"><p class="eyebrow">Configuración</p><h1>Ajustes</h1></div>
+    <section class="stack"><h2>Almacenamiento</h2>
+      <p class="muted">${S.persisted === true ? "Protegido: el navegador no borrará tus datos aunque le falte espacio." : S.persisted === false ? "Sin proteger: si el móvil se queda sin espacio, el navegador podría borrar lo que guardas aquí. Instalar la app en la pantalla de inicio suele protegerlo; mientras, haz copias de vez en cuando." : "Este navegador no indica si protege tus datos. Haz copias de vez en cuando."}</p>
+    </section>
     <section class="stack"><h2>Copia de seguridad</h2>
       <p class="muted">Las preguntas que generes o añadas se guardan solo en este dispositivo. Descarga una copia para pasarlas a otro o para recuperarlas.</p>
       <div class="row"><button class="btn ghost" data-act="exportAll">Descargar copia</button><button class="btn ghost" data-act="importAsk">Restaurar copia</button></div>
