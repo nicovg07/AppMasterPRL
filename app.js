@@ -31,13 +31,14 @@ const ICON = {
 };
 
 /* ---------- state ---------- */
-// No hay progreso guardado: el test en curso y su resultado viven solo mientras la página está abierta.
+// No hay progreso ni estadísticas. Solo se guardan dos cosas entre sesiones: el test a medias ("prl:active_run",
+// para retomarlo si el móvil cierra la app) y el cuaderno de fallos (documento "user/errors" del Store).
 const S = {
   view: "home", p: {}, mode: "loading",
   topics: {}, banks: {}, subjects: {}, ready: { t: false, b: false, s: false },
   db: null,
   setup: Object.assign({ tids: [], diffs: ["facil", "media", "dificil"], origin: "todas", n: 10, mode: "practica", min: null, shuf: true, penalty: false }, lsGet("setup") || {}),
-  run: null, res: {}, lock: false, busy: null
+  run: null, res: {}, lock: false, busy: null, errors: {}
 };
 
 /* ---------- data access ---------- */
@@ -80,10 +81,12 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", paintTheme
 function onDbErr(e) { console.warn("db", e); if (e && e.code === "revoked") { S.mode = "nodb"; render(); } }
 
 async function boot() {
+  initNav();
   paintTheme();
   render();
   const db = await Store.init();
   S.db = db; S.mode = "ok";
+  loadErrors().then(() => refresh());
   Store.persist().then(v => { S.persisted = v; if (S.view === "settings") render(); });
   db.collection("topics").onSnapshot(snap => { const t = {}; for (const d of snap.docs) if (d.exists) t[d.id] = { id: d.id, ...d.data() }; S.topics = t; S.ready.t = true; refresh(); }, onDbErr);
   db.collection("subjects").onSnapshot(snap => { const s = {}; for (const d of snap.docs) if (d.exists) s[d.id] = { id: d.id, ...d.data() }; S.subjects = s; S.ready.s = true; refresh(); }, onDbErr);
@@ -93,13 +96,127 @@ async function boot() {
 /* ---------- rendering ---------- */
 const LIVE = ["home", "subject", "topic", "setup"];
 function refresh(force) { if (S.lock && !force) return; if (LIVE.includes(S.view) || force) render(); }
-function go(view, p = {}) { if (S.view === "run" && view !== "run") stopTimer(); S.view = view; S.p = p; S.lock = false; render(); window.scrollTo(0, 0); }
+/* ---------- navegación con el historial (botón o gesto «Atrás» del móvil) ---------- */
+// Cada pantalla es una entrada del historial { view, p, y }: «Atrás» vuelve a la anterior sin salir de la app.
+// go(view, p, mode): "push" (por defecto) añade una entrada, "replace" sustituye la actual y false no toca el
+// historial (lo usa popstate). Volver a la misma pantalla con otra pestaña sustituye en vez de añadir.
+const TRANSIENT = ["leaveAsk", "submitAsk", "del", "clrErr"]; // confirmaciones abiertas: no se guardan en el historial
+function navParams(p) {
+  const o = {}; for (const k in p || {}) if (!TRANSIENT.includes(k)) o[k] = p[k];
+  try { return JSON.parse(JSON.stringify(o)); } catch (_) { return {}; }
+}
+function setHistory(mode, view, p) {
+  try {
+    const st = { view, p: navParams(p) };
+    if (mode === "replace") { history.replaceState(st, "", "#" + view); return; }
+    if (history.state && history.state.view) history.replaceState({ ...history.state, y: window.scrollY }, ""); // para volver al mismo sitio
+    history.pushState(st, "", "#" + view);
+  } catch (e) { console.warn("history", e); }
+}
+function go(view, p = {}, mode = "push") {
+  if (S.view === "run" && view !== "run") { stopTimer(); saveActiveRun(); }
+  if (mode === "push" && view === S.view && (p.sid || p.tid) === (S.p.sid || S.p.tid)) mode = "replace";
+  if (mode) setHistory(mode, view, p);
+  S.view = view; S.p = p; S.lock = false; render(); window.scrollTo(0, 0);
+}
+// Al arrancar se recupera la pantalla de esta pestaña (al recargar, el navegador conserva history.state) o la del
+// enlace (#setup, #settings). Un test o un resultado no sobreviven a la recarga: se va a Test, que ofrece continuar.
+function initNav() {
+  let view = "home", p = {};
+  const st = history.state, h = location.hash.slice(1);
+  if (st && st.view && VIEWS[st.view]) { view = st.view; p = st.p || {}; }
+  else if (["home", "setup", "settings"].includes(h)) view = h;
+  if (view === "run" || view === "result") { view = "setup"; p = {}; }
+  S.view = view; S.p = p;
+  setHistory("replace", view, p);
+}
+// Mantiene en la entrada actual los cambios hechos sin navegar (pestañas, filtros), solo si han cambiado.
+function syncHistory() {
+  try {
+    const st = history.state; if (!st || st.view !== S.view) return;
+    const p = navParams(S.p); if (JSON.stringify(p) !== JSON.stringify(st.p || {})) history.replaceState({ ...st, p }, "");
+  } catch (_) {}
+}
+addEventListener("popstate", e => {
+  try {
+    const st = e.state || {};
+    let view = VIEWS[st.view] ? st.view : "home", p = st.p || {};
+    if (view === "run") {
+      if (S.view !== "run" && resumeRun(false)) return;
+      if (!activeRun()) { view = "setup"; p = {}; setHistory("replace", view, p); }
+    }
+    if (view === "result" && !S.lastResult) { view = "setup"; p = {}; setHistory("replace", view, p); }
+    const pausing = S.view === "run" && view !== "run" && activeRun();
+    go(view, p, false);
+    if (pausing) toast("Test en pausa: lo retomas desde Test.", 4000);
+    if (st.y) requestAnimationFrame(() => window.scrollTo(0, st.y));
+  } catch (err) { console.warn("popstate", err); go("home", {}, "replace"); }
+});
+
+/* ---------- test a medias: se guarda para retomarlo si el móvil cierra la app ---------- */
+// Instantánea de S.run en "prl:active_run" con la hora (savedAt), en cada cambio y al ocultar la app. Al continuar,
+// el tiempo que estuvo cerrada o en otra pantalla no cuenta: startedAt se desplaza lo que duró la pausa.
+const ACTIVE_KEY = "prl:active_run";
+const activeRun = () => !!(S.run && !S.run.done);
+function saveActiveRun() {
+  if (!activeRun()) return;
+  try { localStorage.setItem(ACTIVE_KEY, JSON.stringify({ ...S.run, savedAt: Date.now() })); }
+  catch (e) { console.warn("active_run", e); }
+}
+function savedRun() {
+  try {
+    const r = JSON.parse(localStorage.getItem(ACTIVE_KEY));
+    return r && Array.isArray(r.items) && r.items.length && Array.isArray(r.answers) && !r.done ? r : null;
+  } catch (_) { return null; }
+}
+function clearActiveRun() { try { localStorage.removeItem(ACTIVE_KEY); } catch (_) {} }
+function resumeRun(mode = "push") {
+  const r = savedRun() || (activeRun() ? { ...S.run, savedAt: Date.now() } : null);
+  if (!r) return false;
+  const paused = Math.max(0, Date.now() - (r.savedAt || Date.now()));
+  delete r.savedAt;
+  r.startedAt = (r.startedAt || Date.now()) + paused;
+  S.run = r; go("run", {}, mode);
+  return true;
+}
+function runBanner() {
+  const r = activeRun() ? S.run : savedRun(); if (!r) return "";
+  const done = r.answers.filter(a => a != null).length, total = r.items.length;
+  return `<div class="callout accent confirm"><span class="grow">Tienes un test a medias: ${done} de ${total} ${total === 1 ? "pregunta respondida" : "preguntas respondidas"}.</span><button class="btn sm" data-act="resume">Continuar</button><button class="btn quiet sm" data-act="discardRun">Descartar</button></div>`;
+}
+addEventListener("pagehide", () => { if (S.view === "run") saveActiveRun(); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden" && S.view === "run") saveActiveRun(); });
+
+/* ---------- cuaderno de fallos ---------- */
+// Preguntas falladas (o en blanco) que se guardan entre sesiones en el documento "user/errors" del Store, así
+// entran en la copia de seguridad: { items: { "tid/qid": { tid, qid, failedAt, streak } } }.
+// Fallar la pone a streak 0; acertarla suma 1, y con 2 aciertos seguidos sale del cuaderno (consolidada).
+const ERR_DOC = "user/errors";
+async function loadErrors() {
+  try { const d = await S.db.doc(ERR_DOC).get(); S.errors = (d.exists && d.data().items) || {}; }
+  catch (e) { console.warn("errors", e); S.errors = {}; }
+}
+const errItems = () => Object.values(S.errors || {}).filter(e => e && findQ(e.tid, e.qid));
+function saveErrors() { const items = clone(S.errors || {}); return guarded("errors", () => S.db.doc(ERR_DOC).set({ items })); }
+function updateErrors(rows) {
+  const E = { ...(S.errors || {}) }, now = Date.now(); let added = 0, cleared = 0;
+  for (const x of rows) {
+    const k = x.tid + "/" + x.qid;
+    if (!x.ok) { if (!E[k]) added++; E[k] = { tid: x.tid, qid: x.qid, failedAt: now, streak: 0 }; }
+    else if (E[k]) { const st = (E[k].streak || 0) + 1; if (st >= 2) { delete E[k]; cleared++; } else E[k] = { ...E[k], streak: st }; }
+  }
+  S.errors = E;
+  if (S.db) saveErrors();
+  return { added, cleared };
+}
 function render() {
   const v = VIEWS[S.view] || VIEWS.home;
   $("#main").innerHTML = S.mode === "loading" ? loadingView() : S.mode === "nodb" ? noDbView() : v();
   renderNav();
   if (S.view === "run" && S.run && S.run.mode === "examen" && !S.run.done) startTimer();
+  if (S.view === "run") saveActiveRun();
   if (S.view === "doc") fitDocFrame();
+  syncHistory();
   const gear = $("#gear"); if (gear) gear.setAttribute("aria-current", S.view === "settings" ? "page" : "false");
 }
 function renderNav() {
@@ -118,7 +235,7 @@ VIEWS.home = () => {
   if (contentLoading()) return loadingView();
   const all = subjects();
   if (!all.length) return `<div class="stack-lg"><div class="stack"><p class="eyebrow">Máster PRL · Nebrija</p><h1>Aún no hay temas</h1></div></div>`;
-  return `<div class="stack-lg"><img class="hero" src="img/portada.webp" alt="Máster en PRL · Prevención de Riesgos Laborales" width="1024" height="572">
+  return `<div class="stack-lg">${runBanner()}<img class="hero" src="img/portada.webp" alt="Máster en PRL · Prevención de Riesgos Laborales" width="1024" height="572">
     <div class="stack" style="gap:4px"><p class="eyebrow">Universidad Nebrija</p><h1>Asignaturas</h1></div>
     <div class="subjects">${all.map((s, i) => `<button class="subj ${s.topics.length ? "" : "void"}" data-act="subject" data-s="${esc(s.id)}"><span class="eyebrow">Asignatura ${i + 1}</span><span class="subj-name">${esc(s.short)}</span><span class="small muted">${s.topics.length ? `${s.topics.length} ${s.topics.length === 1 ? "tema" : "temas"} · ${nQuestions(s)} preguntas` : "Sin temas todavía"}</span></button>`).join("")}</div>
   </div>`;
@@ -265,8 +382,11 @@ VIEWS.setup = () => {
   const c = S.setup; const P = pool(); const n = c.n === 0 ? P.length : Math.min(c.n, P.length);
   const min = c.min || Math.max(1, n);
   const sb = subjects().filter(s => s.topics.length);
+  const nErr = errItems().length;
   return `<div class="stack-lg">
+    ${runBanner()}
     <div class="stack"><p class="eyebrow">Nuevo test</p><h1>${c.mode === "examen" ? "Simular examen" : "Practicar"}</h1></div>
+    ${nErr ? `<button class="btn ghost block" data-act="reviewErrors">Repasar mis fallos (${nErr} ${nErr === 1 ? "pregunta pendiente" : "preguntas pendientes"})</button>` : ""}
     <div class="seg">${[["practica", "Práctica"], ["examen", "Examen"]].map(([k, l]) => `<button aria-pressed="${c.mode === k}" data-act="set" data-f="mode" data-k="${k}">${l}</button>`).join("")}</div>
     <p class="small muted" style="margin-top:-18px">${c.mode === "examen" ? "Con tiempo y sin correcciones hasta que entregues. Al final, nota y repaso de fallos." : "Corrige cada respuesta al momento y explica por qué."}</p>
     <div class="field"><span class="label">Temas</span>${sb.map(s => `<div class="stack" style="gap:8px">${subjChipsHead(s, c.tids, "setSub")}<div class="chips">${s.topics.map(t => `<button class="chip" aria-pressed="${c.tids.includes(t.id)}" data-act="setT" data-t="${t.id}"><span class="mono small">${esc(t.code)}</span> ${esc(t.title)}</button>`).join("")}</div></div>`).join("")}<span class="small muted">${c.tids.length ? `${c.tids.length} ${c.tids.length === 1 ? "tema" : "temas"} mezclados` : "Sin selección: entran todos los temas"}</span></div>
@@ -298,7 +418,7 @@ VIEWS.run = () => {
   const total = r.items.length;
   const exam = r.mode === "examen";
   const top = `<div class="runbar">${exam ? `<span class="timer" id="timer">${fmtTime(r.limitSec - (Date.now() - r.startedAt) / 1000)}</span>` : `<span class="mono small tnum">${i + 1}/${total}</span>`}<div class="bar grow"><i style="width:${pct(exam ? r.answers.filter(a => a != null).length : i + (r.shown[i] ? 1 : 0), total)}%"></i></div><button class="btn quiet sm" data-act="leaveAsk">Salir</button></div>
-    ${S.p.leaveAsk ? `<div class="callout warn confirm" style="margin-bottom:16px"><span class="grow">¿Salir del test? No se guarda.</span><button class="btn danger sm" data-act="leave">Salir</button><button class="btn quiet sm" data-act="leaveNo">Seguir</button></div>` : ""}`;
+    ${S.p.leaveAsk ? `<div class="callout warn confirm" style="margin-bottom:16px"><span class="grow">¿Salir y descartar el test? No podrás continuarlo.</span><button class="btn danger sm" data-act="leave">Salir</button><button class="btn quiet sm" data-act="leaveNo">Seguir</button></div>` : ""}`;
   if (!q) return top + `<div class="stack"><p class="empty">Esta pregunta se ha eliminado del banco.</p><button class="btn" data-act="${i < total - 1 ? "next" : exam ? "submitAsk" : "finish"}">${i < total - 1 ? "Siguiente" : "Terminar"}</button></div>`;
   const t = S.topics[it.tid];
   const ans = r.answers[i]; const shown = !exam && r.shown[i];
@@ -333,8 +453,10 @@ function finishRun(timeUp) {
   }).filter(Boolean);
   const nota = Math.max(0, score / (rows.length || 1) * 10);
   const sec = Math.min((Date.now() - r.startedAt) / 1000, r.limitSec || Infinity);
-  S.lastResult = { mode: r.mode, rows, c, w, b, nota, sec, timeUp: !!timeUp, penalty: r.penalty };
-  go("result");
+  clearActiveRun();
+  const err = updateErrors(rows);
+  S.lastResult = { mode: r.mode, rows, c, w, b, nota, sec, timeUp: !!timeUp, penalty: r.penalty, err };
+  go("result", {}, "replace");
 }
 VIEWS.result = () => {
   const R = S.lastResult; if (!R) return `<p class="empty">No hay resultados.</p>`;
@@ -343,6 +465,7 @@ VIEWS.result = () => {
     <div class="stack"><p class="eyebrow">${R.mode === "examen" ? "Examen entregado" : "Práctica terminada"}${R.timeUp ? " · tiempo agotado" : ""}</p>
     <div class="row" style="align-items:baseline;gap:12px"><span class="score">${fmtNum(R.nota)}</span><span class="muted">sobre 10</span></div></div>
     <div class="stats"><div class="stat"><b style="color:var(--ok)">${R.c}</b><span>aciertos</span></div><div class="stat"><b style="color:var(--bad)">${R.w}</b><span>fallos${R.penalty ? " (restan)" : ""}</span></div><div class="stat"><b>${R.mode === "examen" ? fmtTime(R.sec) : R.b}</b><span>${R.mode === "examen" ? "tiempo" : "en blanco"}</span></div></div>
+    ${R.err ? `<p class="small muted">Cuaderno de fallos: ${R.err.added ? `${R.err.added} ${R.err.added === 1 ? "nueva" : "nuevas"}` : "ninguna nueva"}${R.err.cleared ? ` · ${R.err.cleared} ${R.err.cleared === 1 ? "consolidada" : "consolidadas"}` : ""} · ${(n => `${n} ${n === 1 ? "pendiente" : "pendientes"} en total`)(errItems().length)}.</p>` : ""}
     <div class="row">${wrong.length ? `<button class="btn" data-act="retryWrong">Repetir las ${wrong.length} no acertadas</button>` : ""}<button class="btn ghost" data-act="go" data-v="setup">Nuevo test</button></div>
     <section class="stack"><h2>Repaso</h2><div class="list">${R.rows.map((x, k) => { const q = findQ(x.tid, x.qid); if (!q) return ""; const mine = x.a == null ? "Sin responder" : `${LET[x.order.indexOf(x.a)]}. ${esc(q.opts[x.a])}`; return `<div class="item"><span class="ref" style="background:${x.ok ? "var(--ok-soft)" : "var(--bad-soft)"};color:${x.ok ? "var(--ok)" : "var(--bad)"}">${k + 1}</span><div class="grow stack" style="gap:6px"><span class="item-title">${esc(q.q)}</span>${x.ok ? `<span class="small" style="color:var(--ok)">${LET[x.order.indexOf(q.a)]}. ${esc(q.opts[q.a])}</span>` : `<span class="small" style="color:var(--bad)">Tu respuesta: ${mine}</span><span class="small" style="color:var(--ok)">Correcta: ${LET[x.order.indexOf(q.a)]}. ${esc(q.opts[q.a])}</span>`}${!x.ok && q.exp ? `<span class="small muted">${esc(q.exp)}</span>` : ""}${!x.ok ? whereHTML(q.src, x.tid) : ""}</div></div>`; }).join("")}</div></section>
   </div>`;
@@ -421,7 +544,17 @@ const saveSetup = () => lsSet("setup", S.setup);
 const A = {
   theme: () => { const t = isDark() ? "light" : "dark"; document.documentElement.dataset.theme = t; lsSet("theme", t); paintTheme(); if (S.view === "doc") render(); },
   go: el => go(el.dataset.v),
-  nav: el => { const v = el.dataset.v; if (v === "setup" && S.run && !S.run.done) return go("run"); go(v); },
+  nav: el => { const v = el.dataset.v; if (v === "setup" && activeRun()) { if (S.view !== "run") resumeRun(); return; } go(v); },
+  resume: () => resumeRun(),
+  discardRun: () => { clearActiveRun(); if (activeRun()) { stopTimer(); S.run = null; } render(); },
+  reviewErrors: () => {
+    const items = errItems().map(e => ({ ...findQ(e.tid, e.qid), tid: e.tid }));
+    if (!items.length) return toast("No tienes fallos pendientes");
+    S.run = buildRun({ ...S.setup, mode: "practica", n: 0 }, shuffle(items)); go("run");
+  },
+  clrErrAsk: () => { S.p.clrErr = true; render(); },
+  clrErrNo: () => { S.p.clrErr = false; render(); },
+  clrErr: async () => { S.errors = {}; S.p.clrErr = false; await saveErrors(); toast("Cuaderno de fallos vaciado"); render(); },
   subject: el => go("subject", { sid: el.dataset.s, tab: el.dataset.k || "temas" }),
   doc: el => go("doc", { tid: el.dataset.t, kind: el.dataset.k }),
   topic: el => go("topic", { tid: el.dataset.t, tab: "resumen" }),
@@ -438,7 +571,7 @@ const A = {
   start: () => { const P = pool(); if (!P.length) return; const n = S.setup.n === 0 ? P.length : Math.min(S.setup.n, P.length); if (S.setup.mode === "examen" && !S.setup.min) S.setup.min = n; S.run = buildRun(S.setup); go("run"); },
   leaveAsk: () => { S.p.leaveAsk = true; render(); window.scrollTo(0, 0); },
   leaveNo: () => { S.p.leaveAsk = false; render(); },
-  leave: () => { stopTimer(); S.run = null; go("setup"); },
+  leave: () => { stopTimer(); clearActiveRun(); S.run = null; if (history.state && history.state.view === "run") history.back(); else go("setup", {}, "replace"); },
   pick: el => {
     const r = S.run; const i = r.idx; const o = +el.dataset.o;
     if (r.mode === "examen") { r.answers[i] = r.answers[i] === o ? null : o; render(); return; }
@@ -451,7 +584,7 @@ const A = {
   submitAsk: () => { S.p.submitAsk = true; render(); },
   submitNo: () => { S.p.submitAsk = false; render(); },
   finish: () => finishRun(false),
-  retryWrong: () => { const R = S.lastResult; const items = R.rows.filter(x => !x.ok).map(x => ({ ...findQ(x.tid, x.qid), tid: x.tid })).filter(q => q.id); if (!items.length) return; S.run = buildRun({ ...S.setup, mode: "practica", n: 0 }, shuffle(items)); go("run"); },
+  retryWrong: () => { const R = S.lastResult; const items = R.rows.filter(x => !x.ok).map(x => ({ ...findQ(x.tid, x.qid), tid: x.tid })).filter(q => q.id); if (!items.length) return; S.run = buildRun({ ...S.setup, mode: "practica", n: 0 }, shuffle(items)); go("run", {}, "replace"); },
   gen: el => { const tid = el.dataset.t || topicList()[0]?.id; if (!tid) return; go("gen", { tid, n: 10 }); },
   genSet: el => { S.p[el.dataset.f] = +el.dataset.k; render(); },
   genRun: () => genRun(),
@@ -515,6 +648,10 @@ VIEWS.settings = () => {
     <section class="stack"><h2>Almacenamiento</h2>
       <p class="muted">${S.persisted === true ? "Protegido: el navegador no borrará tus datos aunque le falte espacio." : S.persisted === false ? "Sin proteger: si el móvil se queda sin espacio, el navegador podría borrar lo que guardas aquí. Instalar la app en la pantalla de inicio suele protegerlo; mientras, haz copias de vez en cuando." : "Este navegador no indica si protege tus datos. Haz copias de vez en cuando."}</p>
     </section>
+    <section class="stack"><h2>Cuaderno de fallos</h2>
+      <p class="muted">${(n => n ? `${n} ${n === 1 ? "pregunta pendiente" : "preguntas pendientes"}. Salen del cuaderno cuando las aciertas dos veces seguidas.` : "No tienes fallos pendientes.")(errItems().length)}</p>
+      ${errItems().length ? (S.p.clrErr ? `<div class="callout warn confirm"><span class="grow">¿Vaciar el cuaderno de fallos?</span><button class="btn danger sm" data-act="clrErr">Vaciar</button><button class="btn quiet sm" data-act="clrErrNo">Cancelar</button></div>` : `<div class="row"><button class="btn ghost" data-act="clrErrAsk">Vaciar cuaderno</button></div>`) : ""}
+    </section>
     <section class="stack"><h2>Copia de seguridad</h2>
       <p class="muted">Las preguntas que generes o añadas se guardan solo en este dispositivo. Descarga una copia para pasarlas a otro o para recuperarlas.</p>
       <div class="row"><button class="btn ghost" data-act="exportAll">Descargar copia</button><button class="btn ghost" data-act="importAsk">Restaurar copia</button></div>
@@ -531,7 +668,7 @@ Object.assign(A, {
   }
 });
 Object.assign(C, {
-  impFile: async el => { const f = el.files[0]; el.value = ""; if (!f) return; try { await Store.importAll(JSON.parse(await f.text())); toast("Copia restaurada"); go("home"); } catch (e) { toast("Ese archivo no es una copia válida."); } }
+  impFile: async el => { const f = el.files[0]; el.value = ""; if (!f) return; try { await Store.importAll(JSON.parse(await f.text())); await loadErrors(); toast("Copia restaurada"); go("home"); } catch (e) { toast("Ese archivo no es una copia válida."); } }
 });
 
 boot();

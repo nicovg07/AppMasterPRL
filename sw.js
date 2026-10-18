@@ -1,7 +1,7 @@
 // Service worker: permite instalar la app y abrirla sin conexión.
 // Primero intenta la red (para recibir siempre la última versión), pero si tarda más de TIMEOUT ms y hay
 // copia guardada, usa la copia y deja que la red la actualice por detrás. Sin conexión, siempre la copia.
-const CACHE = "estudio-prl-v10";
+const CACHE = "estudio-prl-v11";
 const TIMEOUT = 3000;
 let slowUntil = 0; // tras una espera agotada, durante 30 s se contesta con la copia sin esperar (red lenta)
 const SHELL = ["./", "index.html", "styles.css", "storage.js", "app.js", "data/seed.json", "apuntes/apuntes.css", "manifest.webmanifest", "img/portada.webp", "icons/favicon-32.png", "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png"];

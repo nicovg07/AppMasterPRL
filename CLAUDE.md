@@ -8,7 +8,7 @@ Se publica en GitHub Pages y se usa en el móvil y el ordenador.
 ## Reglas del proyecto
 - Toda la interfaz va en **español de España**, tuteando, con frases cortas.
 - **Sitio estático sin compilación**: HTML, CSS y JavaScript sin frameworks. No añadas npm, bundlers ni React. Sin librerías externas (solo las fuentes de Google Fonts).
-- **Simple a propósito**: sin progreso guardado (ni estadísticas, ni historial, ni test a medias), sin tarjetas, sin sincronización entre dispositivos y sin IA dentro de la app (ni clave de API, ni añadir temas, ni importar). No los vuelvas a añadir sin que Nico lo pida.
+- **Simple a propósito**: sin estadísticas ni historial de notas (la tarea 2.2 del documento de auditoría está pendiente de que Nico la pida). Desde el 18-10-2026, a petición de Nico, sí se guardan el test a medias y el cuaderno de fallos. Sin sin tarjetas, sin sincronización entre dispositivos y sin IA dentro de la app (ni clave de API, ni añadir temas, ni importar). No los vuelvas a añadir sin que Nico lo pida.
 - **Temas nuevos**: los prepara Claude Code en el chat a partir de los PDF de `Desktop\Máster PRL\<asignatura>\Temario` y `Autoevaluaciones`, y van en `data/seed.json`.
 - **Diseño**: blanco y minimalista, poco texto e ideas clave visibles.
   - Azul de señal de obligación (`--accent`) para las acciones (botones, enlaces) y amarillo de seguridad (`--hi`, texto encima en `--hi-ink`) para los detalles: códigos de tema, franja de las tarjetas de asignatura, pestaña activa, barra inferior y barras de progreso.
@@ -42,9 +42,11 @@ Se publica en GitHub Pages y se usa en el móvil y el ordenador.
   - Pantallas: `home` (una tarjeta por asignatura) → `subject` (temas, Practicar, Simular examen) → `topic` (Resumen, Recursos, Preguntas). La asignatura tiene dos pestañas: Temas y Apuntes. Además `doc` (visor de apuntes), `setup`, `run`, `result`, `gen`, `editq` y `settings` (solo copia de seguridad). La barra inferior tiene Inicio y Test.
   - `render()` repinta `#main`.
   - Hay delegación de eventos: `data-act="x"` → `A.x(el)`, `data-chg="x"` → `C.x(el)`, y los formularios se gestionan en el listener de `submit`.
-  - Navegación con `go(vista, params)`.
+  - Navegación con `go(vista, params, modo)` sobre la History API: cada pantalla es una entrada `{view, p, y}` con `#vista` en la URL; el botón Atrás del móvil vuelve a la anterior y recupera el scroll. `modo`: `"push"` (por defecto), `"replace"` o `false` (desde `popstate`). Ir a la misma pantalla con otra pestaña sustituye la entrada; `syncHistory()` guarda en la entrada los cambios sin navegar. `initNav()` restaura la pantalla al recargar (un test o un resultado se convierten en Test). El resultado sustituye al test en el historial.
+  - Test a medias: `saveActiveRun()` guarda `S.run` en `prl:active_run` en cada render del test y al ocultar la app. Atrás durante un test lo deja en pausa; Inicio y Test muestran «Tienes un test a medias» (Continuar / Descartar). Al continuar no cuenta el tiempo de pausa (`startedAt` se desplaza). «Salir» del test lo descarta.
+  - Cuaderno de fallos: documento `user/errors` del Store (`{items: {"tid/qid": {tid, qid, failedAt, streak}}}`, entra en la copia de seguridad). Al terminar un test, cada no acertada (también en blanco) pasa a `streak` 0 y cada acierto de una pendiente suma 1; con 2 sale del cuaderno. «Repasar mis fallos» en Test; vaciar en Ajustes.
   - Las escrituras se encolan por documento con `guarded(key, fn)` y `enqueue`.
-  - Solo se recuerdan las preferencias del test (`prl:setup`) y el tema (`prl:theme`).
+  - Además de los datos, se recuerdan las preferencias del test (`prl:setup`), el tema (`prl:theme`) y el test a medias (`prl:active_run`).
   - Generador de preguntas sin IA (`genCandidates`): saca preguntas de los recursos (relaciona en los dos sentidos, clasifica, año y «qué va justo después» en los ordena) y de las referencias legales del resumen (`REF_LEGAL`). `genPool` quita las que ya están en el banco; se guardan con `origin:"auto"`.
 
 ## Modelo de datos

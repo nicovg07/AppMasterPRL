@@ -12,7 +12,11 @@ App web para estudiar el Máster Universitario en Prevención de Riesgos Laboral
 - **Apuntes**: en cada asignatura, la pestaña *Apuntes* tiene el resumen visual de cada tema y una hoja con lo que hay que memorizar. Se ven dentro de la app y se descargan en PDF.
 - **Generar preguntas**: en cada tema, la app crea preguntas nuevas con sus recursos y su resumen (sin IA ni conexión). También llevan su página.
 
-La app no guarda progreso: cada test empieza de cero y su resultado se ve al terminar. Tiene modo claro y oscuro (botón de la cabecera).
+- **Cuaderno de fallos**: las preguntas que fallas (o dejas en blanco) se guardan; en *Test → Repasar mis fallos* las repasas, y salen cuando las aciertas dos veces seguidas.
+- **Tests a prueba de cierres**: si el móvil cierra la app o pulsas Atrás en mitad de un test, queda en pausa y puedes continuarlo en la misma pregunta.
+- El botón **Atrás** del móvil navega dentro de la app.
+
+No hay estadísticas ni historial de notas. Tiene modo claro y oscuro (botón de la cabecera).
 
 Es un sitio estático (HTML, CSS y JavaScript sin compilar), así que funciona en GitHub Pages sin servidor.
 
