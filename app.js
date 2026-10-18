@@ -13,21 +13,31 @@ const LET = "ABCDEFGH";
 const fmtNum = n => String(Math.round(n * 10) / 10).replace(".", ",");
 const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
 function fmtTime(sec) { sec = Math.max(0, Math.round(sec)); const m = Math.floor(sec / 60), s = sec % 60; return `${m}:${String(s).padStart(2, "0")}`; }
-function toast(msg, ms = 2600) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, ms); }
+// act: el aviso entero es un botón que lanza A[act] (p. ej. recargar con la versión nueva).
+function toast(msg, ms = 2600, act) { const t = $("#toast"); t.innerHTML = act ? `<button data-act="${act}">${esc(msg)}</button>` : esc(msg); t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, ms); }
 // Si el navegador no deja guardar (memoria llena o datos bloqueados), se avisa como mucho una vez cada 20 s.
 addEventListener("prl:savefail", () => {
   if (Date.now() - (toast.failAt || 0) < 20000) return; toast.failAt = Date.now();
   toast("No se ha podido guardar en este dispositivo. Puede que la memoria esté llena: descarga una copia en Ajustes.", 7000);
 });
+// Vibración corta al responder y al entregar (Android; el iPhone no deja vibrar desde la web). Se quita en Ajustes.
+// Sin haber tocado la página, Chrome la bloquea y lo anota como error (p. ej. si el examen acaba solo por tiempo).
+const canVibrate = "vibrate" in navigator;
+function haptic(p = 12) { if (!canVibrate || lsGet("vibra") === false || navigator.userActivation?.hasBeenActive === false) return; try { navigator.vibrate(p); } catch (_) {} }
+// Versión nueva: el service worker avisa al activarse. Si estás en mitad de un test, el aviso espera a que salgas.
+let updReady = false;
+function showUpdate() { if (!updReady || S.view === "run") return; updReady = false; toast("Nueva versión disponible. Pulsa aquí para actualizar.", 12000, "reload"); }
+navigator.serviceWorker?.addEventListener("message", e => { if (e.data && e.data.type === "updated") { updReady = true; showUpdate(); } });
 
+const svg = (d, x = 'stroke-width="1.8"') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" ${x} stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const ICON = {
-  home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>',
-  test: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="m8 9 1.5 1.5L12 8M8 15.5l1.5 1.5L12 14.5M14.5 9.5H17M14.5 16H17"/></svg>',
-  sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
-  moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11z"/></svg>',
-  chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16M7 16v-4M12 16V7M17 16v-7"/></svg>',
-  down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="18" height="18"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>',
-  book: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 6.5C10.5 5 8 4.5 4 4.5v14c4 0 6.5.5 8 2 1.5-1.5 4-2 8-2v-14c-4 0-6.5.5-8 2zM12 6.5v14"/></svg>',
+  home: svg('<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>'),
+  test: svg('<rect x="4" y="3" width="16" height="18" rx="2"/><path d="m8 9 1.5 1.5L12 8M8 15.5l1.5 1.5L12 14.5M14.5 9.5H17M14.5 16H17"/>'),
+  sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
+  moon: svg('<path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11z"/>'),
+  chart: svg('<path d="M4 20h16M7 16v-4M12 16V7M17 16v-7"/>'),
+  down: svg('<path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/>', 'stroke-width="2" width="18" height="18"'),
+  book: svg('<path d="M12 6.5C10.5 5 8 4.5 4 4.5v14c4 0 6.5.5 8 2 1.5-1.5 4-2 8-2v-14c-4 0-6.5.5-8 2zM12 6.5v14"/>'),
   tri: '<svg class="tri" viewBox="0 0 18 16" aria-hidden="true"><path d="M9 1 17 15H1z" fill="none" stroke="var(--warn)" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 6v4" stroke="var(--warn)" stroke-width="1.6" stroke-linecap="round"/><circle cx="9" cy="12.4" r=".9" fill="var(--warn)"/></svg>'
 };
 
@@ -39,7 +49,7 @@ const S = {
   topics: {}, banks: {}, subjects: {}, ready: { t: false, b: false, s: false },
   db: null,
   setup: Object.assign({ tids: [], diffs: ["facil", "media", "dificil"], origin: "todas", n: 10, mode: "practica", min: null, shuf: true, penalty: false }, lsGet("setup") || {}),
-  run: null, res: {}, lock: false, busy: null, errors: {}, history: []
+  run: null, res: {}, lock: false, errors: {}, history: []
 };
 
 /* ---------- data access ---------- */
@@ -79,24 +89,26 @@ function paintTheme() {
 }
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", paintTheme);
 
-function onDbErr(e) { console.warn("db", e); if (e && e.code === "revoked") { S.mode = "nodb"; render(); } }
-
 async function boot() {
   initNav();
   paintTheme();
   render();
   const db = await Store.init();
   S.db = db; S.mode = "ok";
-  Promise.all([loadErrors(), loadHistory()]).then(() => refresh());
+  Promise.all([loadErrors(), loadHistory()]).then(() => { S.loaded = true; refresh(); });
   Store.persist().then(v => { S.persisted = v; if (S.view === "settings") render(); });
-  db.collection("topics").onSnapshot(snap => { const t = {}; for (const d of snap.docs) if (d.exists) t[d.id] = { id: d.id, ...d.data() }; S.topics = t; S.ready.t = true; refresh(); }, onDbErr);
-  db.collection("subjects").onSnapshot(snap => { const s = {}; for (const d of snap.docs) if (d.exists) s[d.id] = { id: d.id, ...d.data() }; S.subjects = s; S.ready.s = true; refresh(); }, onDbErr);
-  db.collection("banks").onSnapshot(snap => { const b = {}; for (const d of snap.docs) if (d.exists) { const x = d.data(); b[d.id] = { ...(x.rev ? { rev: x.rev } : {}), questions: x.questions || [] }; } S.banks = b; S.ready.b = true; refresh(); }, onDbErr);
+  db.collection("topics").onSnapshot(snap => { const t = {}; for (const d of snap.docs) if (d.exists) t[d.id] = { id: d.id, ...d.data() }; S.topics = t; S.ready.t = true; refresh(); });
+  db.collection("subjects").onSnapshot(snap => { const s = {}; for (const d of snap.docs) if (d.exists) s[d.id] = { id: d.id, ...d.data() }; S.subjects = s; S.ready.s = true; refresh(); });
+  db.collection("banks").onSnapshot(snap => { const b = {}; for (const d of snap.docs) if (d.exists) { const x = d.data(); b[d.id] = { ...(x.rev ? { rev: x.rev } : {}), questions: x.questions || [] }; } S.banks = b; S.ready.b = true; refresh(); });
 }
 
 /* ---------- rendering ---------- */
 const LIVE = ["home", "subject", "topic", "setup", "stats"];
-function refresh(force) { if (S.lock && !force) return; if (LIVE.includes(S.view) || force) render(); }
+function refresh(force) {
+  if (S.lock && !force) return;
+  if (S.autoReview && S.loaded && !contentLoading() && autoReview()) return;
+  if (LIVE.includes(S.view) || force) render();
+}
 /* ---------- navegación con el historial (botón o gesto «Atrás» del móvil) ---------- */
 // Cada pantalla es una entrada del historial { view, p, y }: «Atrás» vuelve a la anterior sin salir de la app.
 // go(view, p, mode): "push" (por defecto) añade una entrada, "replace" sustituye la actual y false no toca el
@@ -118,15 +130,30 @@ function go(view, p = {}, mode = "push") {
   if (S.view === "run" && view !== "run") { stopTimer(); saveActiveRun(); }
   if (mode === "push" && view === S.view && (p.sid || p.tid) === (S.p.sid || S.p.tid)) mode = "replace";
   if (mode) setHistory(mode, view, p);
+  const tip = view === "run" && S.view !== "run";
   S.view = view; S.p = p; S.lock = false; render(); window.scrollTo(0, 0);
+  if (tip) swipeTip();
+}
+// Accesos directos del icono de la app (manifest): #examen abre Test en modo examen y #fallos empieza el repaso
+// del cuaderno en cuanto se han cargado los datos (si no hay un test a medias, que se ofrece antes).
+function hashView(h) {
+  if (h === "examen") { S.setup.mode = "examen"; S.setup.min = null; saveSetup(); return "setup"; }
+  if (h === "fallos") { S.autoReview = true; return "setup"; }
+  return ["home", "setup", "settings", "stats"].includes(h) ? h : null;
+}
+function autoReview() {
+  S.autoReview = false;
+  if (savedRun()) return false;
+  if (!errItems().length) { toast("No tienes fallos pendientes"); return false; }
+  A.reviewErrors(); return true;
 }
 // Al arrancar se recupera la pantalla de esta pestaña (al recargar, el navegador conserva history.state) o la del
-// enlace (#setup, #settings). Un test o un resultado no sobreviven a la recarga: se va a Test, que ofrece continuar.
+// enlace (#setup, #settings…). Un test o un resultado no sobreviven a la recarga: se va a Test, que ofrece continuar.
 function initNav() {
   let view = "home", p = {};
-  const st = history.state, h = location.hash.slice(1);
+  const st = history.state;
   if (st && st.view && VIEWS[st.view]) { view = st.view; p = st.p || {}; }
-  else if (["home", "setup", "settings", "stats"].includes(h)) view = h;
+  else view = hashView(location.hash.slice(1)) || "home";
   if (view === "run" || view === "result") { view = "setup"; p = {}; }
   S.view = view; S.p = p;
   setHistory("replace", view, p);
@@ -142,6 +169,8 @@ addEventListener("popstate", e => {
   try {
     const st = e.state || {};
     let view = VIEWS[st.view] ? st.view : "home", p = st.p || {};
+    // sin estado: se ha cambiado el #… de la dirección (un acceso directo con la app ya abierta)
+    if (!e.state) { view = hashView(location.hash.slice(1)) || "home"; p = {}; setHistory("replace", view, p); }
     if (view === "run") {
       if (S.view !== "run" && resumeRun(false)) return;
       if (!activeRun()) { view = "setup"; p = {}; setHistory("replace", view, p); }
@@ -149,6 +178,7 @@ addEventListener("popstate", e => {
     if (view === "result" && !S.lastResult) { view = "setup"; p = {}; setHistory("replace", view, p); }
     const pausing = S.view === "run" && view !== "run" && activeRun();
     go(view, p, false);
+    if (S.autoReview) refresh();
     if (pausing) toast("Test en pausa: lo retomas desde Test.", 4000);
     if (st.y) requestAnimationFrame(() => window.scrollTo(0, st.y));
   } catch (err) { console.warn("popstate", err); go("home", {}, "replace"); }
@@ -234,12 +264,13 @@ function updateErrors(rows) {
 }
 function render() {
   const v = VIEWS[S.view] || VIEWS.home;
-  $("#main").innerHTML = S.mode === "loading" ? loadingView() : S.mode === "nodb" ? noDbView() : v();
+  $("#main").innerHTML = S.mode === "loading" ? loadingView() : v();
   renderNav();
   if (S.view === "run" && S.run && S.run.mode === "examen" && !S.run.done) startTimer();
   if (S.view === "run") saveActiveRun();
   if (S.view === "doc") fitDocFrame();
   syncHistory();
+  showUpdate();
   const gear = $("#gear"); if (gear) gear.setAttribute("aria-current", S.view === "settings" ? "page" : "false");
 }
 function renderNav() {
@@ -248,7 +279,6 @@ function renderNav() {
   $("#nav").innerHTML = it.map(([v, l, i]) => `<button data-act="nav" data-v="${v}" ${tab === v ? 'aria-current="page"' : ""}>${i}<span>${l}</span></button>`).join("");
 }
 function loadingView() { return `<div class="stack"><div class="skel" style="width:40%"></div><div class="skel" style="width:70%;height:30px"></div><div class="skel" style="width:90%"></div><div class="skel" style="width:60%"></div></div>`; }
-function noDbView() { return `<div class="stack"><h1>No se pudieron cargar tus datos</h1><p class="muted">Recarga la página. Si sigue sin funcionar, revisa que el navegador permita guardar datos de este sitio.</p></div>`; }
 function contentLoading() { return !(S.ready.t && S.ready.b && S.ready.s); }
 
 const VIEWS = {};
@@ -467,6 +497,7 @@ function stopTimer() { clearInterval(timerI); timerI = null; }
 function finishRun(timeUp) {
   const r = S.run; if (!r || r.done) return;
   r.done = true; stopTimer();
+  if (r.mode === "examen") haptic(25);
   let c = 0, w = 0, b = 0, score = 0;
   const rows = r.items.map((it, i) => {
     const q = findQ(it.tid, it.qid); if (!q) return null;
@@ -601,8 +632,8 @@ const A = {
   leave: () => { stopTimer(); clearActiveRun(); S.run = null; if (history.state && history.state.view === "run") history.back(); else go("setup", {}, "replace"); },
   pick: el => {
     const r = S.run; const i = r.idx; const o = +el.dataset.o;
-    if (r.mode === "examen") { r.answers[i] = r.answers[i] === o ? null : o; render(); return; }
-    if (r.shown[i]) return; r.answers[i] = o; r.shown[i] = true; render();
+    if (r.mode === "examen") { r.answers[i] = r.answers[i] === o ? null : o; haptic(10); render(); return; }
+    if (r.shown[i]) return; r.answers[i] = o; r.shown[i] = true; haptic(o === runQ(i)?.a ? 10 : [30, 40, 30]); render();
   },
   next: () => { S.run.idx = Math.min(S.run.items.length - 1, S.run.idx + 1); S.p.submitAsk = false; render(); window.scrollTo(0, 0); },
   prev: () => { S.run.idx = Math.max(0, S.run.idx - 1); render(); window.scrollTo(0, 0); },
@@ -611,6 +642,7 @@ const A = {
   submitAsk: () => { S.p.submitAsk = true; render(); },
   submitNo: () => { S.p.submitAsk = false; render(); },
   finish: () => finishRun(false),
+  reload: () => location.reload(),
   retryWrong: () => { const R = S.lastResult; const items = R.rows.filter(x => !x.ok).map(x => ({ ...findQ(x.tid, x.qid), tid: x.tid })).filter(q => q.id); if (!items.length) return; S.run = buildRun({ ...S.setup, mode: "practica", n: 0, kind: "repetir" }, shuffle(items)); go("run", {}, "replace"); },
   gen: el => { const tid = el.dataset.t || topicList()[0]?.id; if (!tid) return; go("gen", { tid, n: 10 }); },
   genSet: el => { S.p[el.dataset.f] = +el.dataset.k; render(); },
@@ -629,17 +661,17 @@ const A = {
   ordCheck: el => { S.res[el.dataset.t + ":" + el.dataset.i].checked = true; rerenderRes(el.dataset.t, +el.dataset.i); }
 };
 function keepForm(fn) {
-  const vals = {}, files = {};
-  document.querySelectorAll("form input, form textarea, form select").forEach(i => { if (!i.id) return; if (i.type === "file") files[i.id] = i.files; else vals[i.id] = i.type === "radio" ? i.checked : i.value; });
+  const vals = {};
+  document.querySelectorAll("form input, form textarea, form select").forEach(i => { if (i.id) vals[i.id] = i.type === "radio" ? i.checked : i.value; });
   const segK = $("#q_d [aria-pressed=true]")?.dataset.k; fn();
   for (const id in vals) { const i = document.getElementById(id); if (!i) continue; if (i.type === "radio") i.checked = vals[id]; else i.value = vals[id]; }
-  for (const id in files) { const i = document.getElementById(id); if (i && files[id] && files[id].length) i.files = files[id]; }
   if (segK) $("#q_d").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.k === segK));
 }
 const C = {
   exmin: el => { const v = Math.max(1, Math.min(240, +el.value || 1)); S.setup.min = v; saveSetup(); },
   pen: el => { S.setup.penalty = el.checked; saveSetup(); },
   shuf: el => { S.setup.shuf = el.checked; saveSetup(); },
+  vibra: el => { lsSet("vibra", el.checked); haptic(15); },
   genKeep: el => { S.p.result[+el.dataset.i].keep = el.checked; const btn = $('[data-act="genSave"]'); const n = S.p.result.filter(x => x.keep).length; if (btn) { btn.textContent = `Añadir ${n} al tema`; btn.disabled = !n; } },
 };
 document.addEventListener("click", e => { const el = e.target.closest("[data-act]"); if (!el || el.disabled) return; const fn = A[el.dataset.act]; if (fn) { e.preventDefault(); fn(el, e); } });
@@ -648,9 +680,37 @@ document.addEventListener("keydown", e => {
   const r = S.run, it = r.items[r.idx];
   const n = "1234abcd".indexOf(e.key.toLowerCase()) % 4;
   if (n >= 0 && it && n < it.order.length && !(r.mode === "practica" && r.shown[r.idx])) { const b = document.querySelector(`.opt[data-o="${it.order[n]}"]`); if (b) A.pick(b); }
-  else if ((e.key === "Enter" || e.key === "ArrowRight") && (r.mode === "examen" || r.shown[r.idx]) && r.idx < r.items.length - 1) A.next();
-  else if (e.key === "ArrowLeft" && r.mode === "examen" && r.idx > 0) A.prev();
+  else if (e.key === "Enter" || e.key === "ArrowRight") step(1);
+  else if (e.key === "ArrowLeft") step(-1);
 });
+// Pasar de pregunta con las flechas o deslizando el dedo: adelante en el examen o si ya está corregida; atrás, solo
+// en el examen (en práctica no hay «Anterior»).
+function step(d) {
+  const r = S.run; if (!r || r.done) return false;
+  if (d > 0 && (r.mode === "examen" || r.shown[r.idx]) && r.idx < r.items.length - 1) A.next();
+  else if (d < 0 && r.mode === "examen" && r.idx > 0) A.prev();
+  else return false;
+  return true;
+}
+// Gesto en el test: hacia la izquierda, siguiente; hacia la derecha, anterior. Solo cuenta si es claramente horizontal
+// (≥ 60 px y el doble que en vertical, para no confundirlo con el scroll), rápido y sin empezar en el borde de la
+// pantalla, donde el móvil tiene su gesto «Atrás».
+let touch0 = null;
+document.addEventListener("touchstart", e => {
+  const t = e.touches[0];
+  touch0 = S.view === "run" && e.touches.length === 1 && t.clientX > 24 && t.clientX < innerWidth - 24 ? { x: t.clientX, y: t.clientY, at: Date.now() } : null;
+}, { passive: true });
+document.addEventListener("touchend", e => {
+  const s = touch0; touch0 = null;
+  if (!s || S.view !== "run" || Date.now() - s.at > 800) return;
+  const t = e.changedTouches[0], dx = t.clientX - s.x, dy = t.clientY - s.y;
+  if (Math.abs(dx) < 60 || Math.abs(dx) < 2 * Math.abs(dy) || !step(dx < 0 ? 1 : -1)) return;
+  const el = $("#main .stack-lg"); if (el) el.classList.add(dx < 0 ? "in-l" : "in-r"); // entra desde el lado del gesto
+}, { passive: true });
+function swipeTip() {
+  try { if (!matchMedia("(pointer: coarse)").matches || lsGet("tipSwipe")) return; } catch (_) { return; }
+  lsSet("tipSwipe", 1); toast("Consejo: desliza el dedo hacia la izquierda para pasar de pregunta.", 4500);
+}
 document.addEventListener("change", e => { const el = e.target.closest("[data-chg]"); if (el && C[el.dataset.chg]) C[el.dataset.chg](el, e); });
 document.addEventListener("focusin", e => { if (e.target.closest("form")) S.lock = true; });
 document.addEventListener("submit", async e => {
@@ -668,7 +728,6 @@ document.addEventListener("submit", async e => {
   }
 });
 
-/* ----- settings ----- */
 /* ----- estadísticas ----- */
 const KIND = { fallos: "Repaso de fallos", repetir: "Repetir no acertadas" };
 const fmtDay = d => new Date(d).toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit" });
@@ -707,9 +766,11 @@ VIEWS.stats = () => {
   </div>`;
 };
 
+/* ----- settings ----- */
 VIEWS.settings = () => {
   return `<div class="stack-lg">
     <div class="stack"><p class="eyebrow">Configuración</p><h1>Ajustes</h1></div>
+    ${canVibrate ? `<section class="stack"><h2>Vibración</h2><label class="toggle" for="vib"><span><b>Vibrar al responder</b><br><span class="small muted">Un toque al elegir, uno doble si fallas en práctica y otro al entregar el examen</span></span><input type="checkbox" id="vib" ${lsGet("vibra") === false ? "" : "checked"} data-chg="vibra"></label></section>` : ""}
     <section class="stack"><h2>Almacenamiento</h2>
       <p class="muted">${S.persisted === true ? "Protegido: el navegador no borrará tus datos aunque le falte espacio." : S.persisted === false ? "Sin proteger: si el móvil se queda sin espacio, el navegador podría borrar lo que guardas aquí. Instalar la app en la pantalla de inicio suele protegerlo; mientras, haz copias de vez en cuando." : "Este navegador no indica si protege tus datos. Haz copias de vez en cuando."}</p>
     </section>

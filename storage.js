@@ -1,12 +1,11 @@
 // Capa de datos. Imita una pequeña base de documentos (rutas tipo "topics/t1"):
-//   Store.db.doc(path).get/set/update/delete   ·   Store.db.collection(path).onSnapshot(fn)
+//   Store.db.doc(path).get/set   ·   Store.db.collection(path).onSnapshot(fn)
 // Todo se guarda solo en este navegador (localStorage). No hay sincronización entre dispositivos:
 // para llevar tus temas a otro, usa Ajustes → Copia de seguridad.
 (function () {
   const LS_KEY = "prl:db";
   const clone = o => o == null ? o : JSON.parse(JSON.stringify(o));
   const isObj = o => o && typeof o === "object" && !Array.isArray(o);
-  function deepMerge(t, s) { for (const k in s) { if (isObj(s[k]) && isObj(t[k])) deepMerge(t[k], s[k]); else t[k] = clone(s[k]); } return t; }
 
   let docs = {};            // path -> data
   let listeners = [];       // { prefix, next }
@@ -36,25 +35,18 @@
   function inCollection(path, col) { const parts = path.split("/"); return path.startsWith(col + "/") && parts.length === col.split("/").length + 1; }
   function snapDoc(path) { const d = docs[path]; return { id: path.split("/").pop(), exists: d !== undefined, data: () => clone(d) }; }
   function emit() { for (const l of listeners) l.fire(); }
-  function querySnap(col) { const ds = Object.keys(docs).filter(p => inCollection(p, col)).sort().map(snapDoc); return { docs: ds, size: ds.length, empty: !ds.length }; }
+  function querySnap(col) { return { docs: Object.keys(docs).filter(p => inCollection(p, col)).sort().map(snapDoc) }; }
 
   const db = {
     doc(path) {
       if (path.split("/").length % 2) throw new TypeError("Una ruta de documento necesita un número par de segmentos: " + path);
       return {
-        id: path.split("/").pop(), path,
         get: async () => snapDoc(path),
-        set: async data => { docs[path] = clone(data); saveLocal(); emit(); },
-        update: async data => { if (docs[path] === undefined) throw { code: "invalid_argument", message: "El documento no existe" }; deepMerge(docs[path], data); saveLocal(); emit(); },
-        delete: async () => { delete docs[path]; saveLocal(); emit(); },
-        onSnapshot(next) { const l = { fire: () => next(snapDoc(path)) }; listeners.push(l); setTimeout(l.fire, 0); return () => { listeners = listeners.filter(x => x !== l); }; }
+        set: async data => { docs[path] = clone(data); saveLocal(); emit(); }
       };
     },
     collection(col) {
       return {
-        path: col,
-        doc: id => db.doc(col + "/" + (id || Math.random().toString(36).slice(2, 12))),
-        get: async () => querySnap(col),
         onSnapshot(next) { const l = { fire: () => next(querySnap(col)) }; listeners.push(l); setTimeout(l.fire, 0); return () => { listeners = listeners.filter(x => x !== l); }; }
       };
     }

@@ -199,7 +199,11 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .confirm>.grow{flex:1 1 220px}
 .gen-q{display:grid;grid-template-columns:24px minmax(0,1fr);gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
 .gen-q input{width:20px;height:20px;accent-color:var(--accent);margin-top:2px}
-.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--nav-h) + 16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;z-index:30;max-width:calc(100% - 32px)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--nav-h) + 16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;z-index:30;width:max-content;max-width:calc(100% - 32px);text-align:center}
+.toast button{background:none;border:0;padding:0;color:inherit;font-weight:600;text-align:inherit}
+/* pregunta nueva al deslizar: entra desde el lado del gesto (16 px, lo que mide el margen: sin scroll lateral) */
+.in-l{animation:in-l .18s ease-out}.in-r{animation:in-r .18s ease-out}
+@keyframes in-l{from{transform:translateX(16px);opacity:.4}}@keyframes in-r{from{transform:translateX(-16px);opacity:.4}}
 .score{font-size:64px;line-height:1;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
 @media (max-width:420px){h1{font-size:26px}.qtext{font-size:18px}.stat b{font-size:26px}.keys li{grid-template-columns:minmax(0,1fr);gap:4px}}

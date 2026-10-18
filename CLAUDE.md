@@ -8,7 +8,7 @@ Se publica en GitHub Pages y se usa en el móvil y el ordenador.
 ## Reglas del proyecto
 - Toda la interfaz va en **español de España**, tuteando, con frases cortas.
 - **Sitio estático sin compilación**: HTML, CSS y JavaScript sin frameworks. No añadas npm, bundlers ni React. Sin librerías externas (solo las fuentes de Google Fonts).
-- **Simple a propósito**. Desde el 18-10-2026, a petición de Nico (documento de auditoría, Fase 1 y 2), sí se guardan el test a medias, el cuaderno de fallos y el historial de tests con estadísticas. Sin sin tarjetas, sin sincronización entre dispositivos y sin IA dentro de la app (ni clave de API, ni añadir temas, ni importar). No los vuelvas a añadir sin que Nico lo pida.
+- **Simple a propósito**. Desde el 18-10-2026, a petición de Nico (documento de auditoría, Fases 1 a 3), sí se guardan el test a medias, el cuaderno de fallos y el historial de tests con estadísticas, y hay vibración, gestos y accesos directos en el móvil. Sin tarjetas, sin sincronización entre dispositivos y sin IA dentro de la app (ni clave de API, ni añadir temas, ni importar). No los vuelvas a añadir sin que Nico lo pida.
 - **Temas nuevos**: los prepara Claude Code en el chat a partir de los PDF de `Desktop\Máster PRL\<asignatura>\Temario` y `Autoevaluaciones`, y van en `data/seed.json`.
 - **Diseño**: blanco y minimalista, poco texto e ideas clave visibles.
   - Azul de señal de obligación (`--accent`) para las acciones (botones, enlaces) y amarillo de seguridad (`--hi`, texto encima en `--hi-ink`) para los detalles: códigos de tema, franja de las tarjetas de asignatura, pestaña activa, barra inferior y barras de progreso.
@@ -30,7 +30,7 @@ Se publica en GitHub Pages y se usa en el móvil y el ordenador.
   - Cada tema del seed lo anuncia con `apuntes: ["resumen", "memorizar"]`. La vista `doc` los muestra en un iframe (`?embed=1&theme=…`) que toma la altura del contenido, con botón de descarga del PDF.
 
 ## Arquitectura
-- `storage.js` → `window.Store`. Es una mini base de documentos con rutas tipo Firestore, guardada solo en `localStorage` (`prl:db`). Los documentos tienen un número par de segmentos y las colecciones impar. Expone `Store.db.doc(path).get/set/update/delete/onSnapshot` y `Store.db.collection(path).onSnapshot`.
+- `storage.js` → `window.Store`. Es una mini base de documentos con rutas tipo Firestore, guardada solo en `localStorage` (`prl:db`). Los documentos tienen un número par de segmentos y las colecciones impar. Expone `Store.db.doc(path).get/set` y `Store.db.collection(path).onSnapshot` (lo que usa la app; el resto se quitó el 18-10-2026).
   - Al arrancar, `dropLegacy()` borra lo de versiones anteriores (progreso `data/…`, tarjetas y `prl:apikey`).
   - Guarda 150 ms después del último cambio y también al ocultar la app (`pagehide`, `visibilitychange`). Si `localStorage` falla (memoria llena), lanza el evento `prl:savefail` y la app muestra un aviso.
   - `Store.persist()` pide almacenamiento persistente (`navigator.storage.persist`); Ajustes muestra si está protegido.
@@ -39,7 +39,7 @@ Se publica en GitHub Pages y se usa en el móvil y el ordenador.
   - `meta/seed` guarda los ids ya añadidos para no resucitar lo que se borra. Para cambiar contenido ya publicado, sube el `rev`; para añadir preguntas, usa ids nuevos.
 - `app.js`:
   - El estado está en `S`. Las vistas son funciones en `VIEWS.<nombre>` que devuelven HTML (escapa siempre con `esc()`).
-  - Pantallas: `home` (una tarjeta por asignatura) → `subject` (temas, Practicar, Simular examen) → `topic` (Resumen, Recursos, Preguntas). La asignatura tiene dos pestañas: Temas y Apuntes. Además `doc` (visor de apuntes), `setup`, `run`, `result`, `gen`, `editq` y `settings` (solo copia de seguridad). La barra inferior tiene Inicio y Test.
+  - Pantallas: `home` (una tarjeta por asignatura) → `subject` (temas, Practicar, Simular examen) → `topic` (Resumen, Recursos, Preguntas). La asignatura tiene dos pestañas: Temas y Apuntes. Además `doc` (visor de apuntes), `setup`, `run`, `result`, `gen`, `editq`, `stats` (Progreso) y `settings` (vibración, almacenamiento, cuaderno de fallos, historial y copia de seguridad).
   - `render()` repinta `#main`.
   - Hay delegación de eventos: `data-act="x"` → `A.x(el)`, `data-chg="x"` → `C.x(el)`, y los formularios se gestionan en el listener de `submit`.
   - Navegación con `go(vista, params, modo)` sobre la History API: cada pantalla es una entrada `{view, p, y}` con `#vista` en la URL; el botón Atrás del móvil vuelve a la anterior y recupera el scroll. `modo`: `"push"` (por defecto), `"replace"` o `false` (desde `popstate`). Ir a la misma pantalla con otra pestaña sustituye la entrada; `syncHistory()` guarda en la entrada los cambios sin navegar. `initNav()` restaura la pantalla al recargar (un test o un resultado se convierten en Test). El resultado sustituye al test en el historial.
@@ -47,8 +47,14 @@ Se publica en GitHub Pages y se usa en el móvil y el ordenador.
   - Cuaderno de fallos: documento `user/errors` del Store (`{items: {"tid/qid": {tid, qid, failedAt, streak}}}`, entra en la copia de seguridad). Al terminar un test, cada no acertada (también en blanco) pasa a `streak` 0 y cada acierto de una pendiente suma 1; con 2 sale del cuaderno. «Repasar mis fallos» en Test; vaciar en Ajustes.
   - Historial y estadísticas: documento `user/history` (`{items: [{date, mode, kind, nota, aciertos, fallos, blanco, total, sec, porTema: {tid: [aciertos, total]}}]}`, máx. 300, entra en la copia). `kind`: `test`, `fallos` (repaso del cuaderno) o `repetir`. La vista `stats` (pestaña Progreso de la barra inferior) muestra tests, nota media, % de aciertos, barras de las 10 últimas notas, aciertos por asignatura y por tema (el más flojo arriba) y los últimos tests. Media, gráfico y aciertos solo cuentan `kind: "test"`. Se borra en Ajustes.
   - Las escrituras se encolan por documento con `guarded(key, fn)` y `enqueue`.
-  - Además de los datos, se recuerdan las preferencias del test (`prl:setup`), el tema (`prl:theme`) y el test a medias (`prl:active_run`).
+  - Además de los datos, se recuerdan las preferencias del test (`prl:setup`), el tema (`prl:theme`), el test a medias (`prl:active_run`), si se quiere vibración (`prl:vibra`, `false` = no) y si ya se enseñó el consejo del gesto (`prl:tipSwipe`).
   - Barra inferior: Inicio, Test y Progreso.
+  - Móvil (Fase 3):
+    - `haptic(ms|patrón)` vibra al elegir (10), al fallar en práctica ([30, 40, 30]) y al entregar el examen (25). No hace nada sin `navigator.vibrate` (iPhone), con `prl:vibra` a `false` o sin haber tocado aún la página (Chrome lo bloquea y lo anota como error).
+    - En el test, `step(±1)` pasa de pregunta con las flechas y con el gesto: hacia la izquierda, siguiente (en práctica, solo ya corregida); hacia la derecha, anterior (solo en examen). El gesto cuenta si es ≥ 60 px en horizontal, el doble que en vertical, dura menos de 800 ms y no empieza a menos de 24 px del borde. La pregunta entra con `.in-l` / `.in-r`. La primera vez en una pantalla táctil, un aviso explica el gesto.
+    - Accesos directos del manifest: `#examen` (Test en modo examen) y `#fallos` (empieza el repaso del cuaderno en cuanto hay datos, salvo si hay un test a medias). Los resuelve `hashView()` al arrancar y en un `popstate` sin estado (con la app ya abierta solo cambia el `#`).
+    - Versión nueva: el service worker manda `{type: "updated"}` al activarse y `showUpdate()` saca «Nueva versión disponible. Pulsa aquí para actualizar» (`toast(msg, ms, "reload")`, con botón), nunca en mitad de un test. `index.html` pide `reg.update()` al volver a la app si han pasado 30 min.
+  - Peso: `app.js` + `storage.js` + `sw.js` suman 81.770 bytes (79,9 KiB; 26 KB comprimido), justo el límite de 80 KB del documento de auditoría.
   - Generador de preguntas sin IA (`genCandidates`): saca preguntas de los recursos (relaciona en los dos sentidos, clasifica, año y «qué va justo después» en los ordena) y de las referencias legales del resumen (`REF_LEGAL`). `genPool` quita las que ya están en el banco; se guardan con `origin:"auto"`.
 
 ## Modelo de datos
@@ -66,7 +72,7 @@ Se publica en GitHub Pages y se usa en el móvil y el ordenador.
 - `banks/<tid>`: `{rev?, questions:[{id, q, opts:[], a, exp, diff:"facil|media|dificil", origin:"oficial|claude|auto|propia", src?:{t?, pg, sec}, check?}]}`. `whereHTML()` en `app.js` lo pinta al corregir y en el repaso.
 
 ## Service worker
-`sw.js` va primero a la red, pero si hay copia y la red tarda más de 3 s (`TIMEOUT`), contesta con la copia; durante los 30 s siguientes contesta con la copia sin esperar y la red la actualiza por detrás. Sin conexión, la copia. Sube `CACHE` cada vez que cambies archivos que cachea.
+`sw.js` es *stale-while-revalidate*: contesta al momento con la copia y la actualiza por detrás (`fetch` con `cache: "no-cache"`), así que lo publicado se ve en la siguiente apertura. Al instalarse descarga `SHELL` con `cache: "reload"` (sin la caché HTTP de GitHub Pages), se activa enseguida (`skipWaiting` + `clients.claim`), borra las cachés viejas y, si sustituye a otra versión, avisa a las pestañas (`updated`). Sin conexión, la copia; una navegación sin copia recibe `index.html`. **Sube `CACHE` en cada publicación**: es lo que instala la versión nueva y saca el aviso.
 
 ## Probar
-`python3 -m http.server 8000` y abre `http://localhost:8000`. Tras cambiar archivos que cachea el service worker, sube la versión de `CACHE` en `sw.js` para que los móviles reciban la nueva versión.
+`python -m http.server 8000 --bind 127.0.0.1` y abre `http://127.0.0.1:8000` (no `localhost`, para no pisar los datos de Nico). La app solo registra el service worker en https: para probarlo en local, regístralo a mano (`navigator.serviceWorker.register("sw.js")`). El navegador integrado de Claude Code no lo deja registrar en http; usa Chrome headless por el protocolo de DevTools, con el perfil en una ruta corta (con la del scratchpad, Cache Storage pasa de 260 caracteres y falla con «Entry already exists»).

@@ -15,8 +15,9 @@ App web para estudiar el Máster Universitario en Prevención de Riesgos Laboral
 - **Cuaderno de fallos**: las preguntas que fallas (o dejas en blanco) se guardan; en *Test → Repasar mis fallos* las repasas, y salen cuando las aciertas dos veces seguidas.
 - **Tests a prueba de cierres**: si el móvil cierra la app o pulsas Atrás en mitad de un test, queda en pausa y puedes continuarlo en la misma pregunta.
 - El botón **Atrás** del móvil navega dentro de la app.
-
 - **Progreso**: cada test terminado queda en un historial con tu nota media, el % de aciertos, la evolución de las últimas 10 notas y los aciertos por asignatura y por tema, para ver dónde flojeas. Los repasos de fallos no cuentan en la media.
+- **En el móvil**: en los tests se pasa de pregunta deslizando el dedo hacia la izquierda (en el examen, a la derecha para volver) y vibra al responder, más fuerte si fallas en práctica; la vibración se quita en *Ajustes*. Manteniendo pulsado el icono de la app (Android) salen dos accesos directos: *Simular examen* y *Repasar mis fallos*.
+- **Siempre al momento**: se abre con la copia guardada, también sin conexión, y se actualiza por detrás. Cuando hay una versión nueva, avisa con «Nueva versión disponible»; al tocarlo, recarga.
 
 Tiene modo claro y oscuro (botón de la cabecera).
 
