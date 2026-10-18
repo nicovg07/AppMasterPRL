@@ -25,20 +25,21 @@ const ICON = {
   test: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="m8 9 1.5 1.5L12 8M8 15.5l1.5 1.5L12 14.5M14.5 9.5H17M14.5 16H17"/></svg>',
   sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
   moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11z"/></svg>',
+  chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16M7 16v-4M12 16V7M17 16v-7"/></svg>',
   down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="18" height="18"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>',
   book: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 6.5C10.5 5 8 4.5 4 4.5v14c4 0 6.5.5 8 2 1.5-1.5 4-2 8-2v-14c-4 0-6.5.5-8 2zM12 6.5v14"/></svg>',
   tri: '<svg class="tri" viewBox="0 0 18 16" aria-hidden="true"><path d="M9 1 17 15H1z" fill="none" stroke="var(--warn)" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 6v4" stroke="var(--warn)" stroke-width="1.6" stroke-linecap="round"/><circle cx="9" cy="12.4" r=".9" fill="var(--warn)"/></svg>'
 };
 
 /* ---------- state ---------- */
-// No hay progreso ni estadísticas. Solo se guardan dos cosas entre sesiones: el test a medias ("prl:active_run",
-// para retomarlo si el móvil cierra la app) y el cuaderno de fallos (documento "user/errors" del Store).
+// Entre sesiones se guardan el test a medias ("prl:active_run", para retomarlo si el móvil cierra la app), el
+// cuaderno de fallos ("user/errors") y el historial de tests para las estadísticas ("user/history").
 const S = {
   view: "home", p: {}, mode: "loading",
   topics: {}, banks: {}, subjects: {}, ready: { t: false, b: false, s: false },
   db: null,
   setup: Object.assign({ tids: [], diffs: ["facil", "media", "dificil"], origin: "todas", n: 10, mode: "practica", min: null, shuf: true, penalty: false }, lsGet("setup") || {}),
-  run: null, res: {}, lock: false, busy: null, errors: {}
+  run: null, res: {}, lock: false, busy: null, errors: {}, history: []
 };
 
 /* ---------- data access ---------- */
@@ -86,7 +87,7 @@ async function boot() {
   render();
   const db = await Store.init();
   S.db = db; S.mode = "ok";
-  loadErrors().then(() => refresh());
+  Promise.all([loadErrors(), loadHistory()]).then(() => refresh());
   Store.persist().then(v => { S.persisted = v; if (S.view === "settings") render(); });
   db.collection("topics").onSnapshot(snap => { const t = {}; for (const d of snap.docs) if (d.exists) t[d.id] = { id: d.id, ...d.data() }; S.topics = t; S.ready.t = true; refresh(); }, onDbErr);
   db.collection("subjects").onSnapshot(snap => { const s = {}; for (const d of snap.docs) if (d.exists) s[d.id] = { id: d.id, ...d.data() }; S.subjects = s; S.ready.s = true; refresh(); }, onDbErr);
@@ -94,13 +95,13 @@ async function boot() {
 }
 
 /* ---------- rendering ---------- */
-const LIVE = ["home", "subject", "topic", "setup"];
+const LIVE = ["home", "subject", "topic", "setup", "stats"];
 function refresh(force) { if (S.lock && !force) return; if (LIVE.includes(S.view) || force) render(); }
 /* ---------- navegación con el historial (botón o gesto «Atrás» del móvil) ---------- */
 // Cada pantalla es una entrada del historial { view, p, y }: «Atrás» vuelve a la anterior sin salir de la app.
 // go(view, p, mode): "push" (por defecto) añade una entrada, "replace" sustituye la actual y false no toca el
 // historial (lo usa popstate). Volver a la misma pantalla con otra pestaña sustituye en vez de añadir.
-const TRANSIENT = ["leaveAsk", "submitAsk", "del", "clrErr"]; // confirmaciones abiertas: no se guardan en el historial
+const TRANSIENT = ["leaveAsk", "submitAsk", "del", "clrErr", "clrHist"]; // confirmaciones abiertas: no se guardan en el historial
 function navParams(p) {
   const o = {}; for (const k in p || {}) if (!TRANSIENT.includes(k)) o[k] = p[k];
   try { return JSON.parse(JSON.stringify(o)); } catch (_) { return {}; }
@@ -125,7 +126,7 @@ function initNav() {
   let view = "home", p = {};
   const st = history.state, h = location.hash.slice(1);
   if (st && st.view && VIEWS[st.view]) { view = st.view; p = st.p || {}; }
-  else if (["home", "setup", "settings"].includes(h)) view = h;
+  else if (["home", "setup", "settings", "stats"].includes(h)) view = h;
   if (view === "run" || view === "result") { view = "setup"; p = {}; }
   S.view = view; S.p = p;
   setHistory("replace", view, p);
@@ -187,6 +188,28 @@ function runBanner() {
 addEventListener("pagehide", () => { if (S.view === "run") saveActiveRun(); });
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden" && S.view === "run") saveActiveRun(); });
 
+/* ---------- historial de tests (estadísticas) ---------- */
+// Cada test terminado se guarda en el documento "user/history" del Store (entra en la copia de seguridad):
+// { items: [{ date, mode, kind, nota, aciertos, fallos, blanco, total, sec, porTema: { tid: [aciertos, total] } }] }.
+// kind: "test" (normal), "fallos" (repaso del cuaderno) o "repetir" (no acertadas). Se guardan los 300 últimos.
+// Media, evolución y aciertos por asignatura cuentan solo los tests normales: los repasos se hacen con preguntas
+// ya falladas y bajarían la nota sin decir nada de cómo vas.
+const HIST_DOC = "user/history", HIST_MAX = 300;
+async function loadHistory() {
+  try { const d = await S.db.doc(HIST_DOC).get(); const it = d.exists && d.data().items; S.history = Array.isArray(it) ? it : []; }
+  catch (e) { console.warn("history", e); S.history = []; }
+}
+function saveHistory() { const items = clone(S.history || []); return guarded("history", () => S.db.doc(HIST_DOC).set({ items })); }
+function recordHistory(run, rows, c, w, b, nota, sec) {
+  try {
+    const porTema = {};
+    for (const x of rows) { const t = porTema[x.tid] || (porTema[x.tid] = [0, 0]); t[1]++; if (x.ok) t[0]++; }
+    const item = { date: Date.now(), mode: run.mode, kind: run.kind || "test", nota: Math.round(nota * 100) / 100, aciertos: c, fallos: w, blanco: b, total: rows.length, sec: Math.round(sec), porTema };
+    S.history = [...(S.history || []), item].slice(-HIST_MAX);
+    if (S.db) saveHistory();
+  } catch (e) { console.warn("history", e); }
+}
+
 /* ---------- cuaderno de fallos ---------- */
 // Preguntas falladas (o en blanco) que se guardan entre sesiones en el documento "user/errors" del Store, así
 // entran en la copia de seguridad: { items: { "tid/qid": { tid, qid, failedAt, streak } } }.
@@ -220,8 +243,8 @@ function render() {
   const gear = $("#gear"); if (gear) gear.setAttribute("aria-current", S.view === "settings" ? "page" : "false");
 }
 function renderNav() {
-  const tab = { settings: "", setup: "setup", run: "setup", result: "setup" }[S.view] ?? "home";
-  const it = [["home", "Inicio", ICON.home], ["setup", "Test", ICON.test]];
+  const tab = { settings: "", setup: "setup", run: "setup", result: "setup", stats: "stats" }[S.view] ?? "home";
+  const it = [["home", "Inicio", ICON.home], ["setup", "Test", ICON.test], ["stats", "Progreso", ICON.chart]];
   $("#nav").innerHTML = it.map(([v, l, i]) => `<button data-act="nav" data-v="${v}" ${tab === v ? 'aria-current="page"' : ""}>${i}<span>${l}</span></button>`).join("");
 }
 function loadingView() { return `<div class="stack"><div class="skel" style="width:40%"></div><div class="skel" style="width:70%;height:30px"></div><div class="skel" style="width:90%"></div><div class="skel" style="width:60%"></div></div>`; }
@@ -405,7 +428,7 @@ VIEWS.setup = () => {
 function buildRun(cfg, items) {
   const list = items || shuffle(pool(cfg)).slice(0, cfg.n || undefined);
   return {
-    mode: cfg.mode, startedAt: Date.now(), penalty: !!cfg.penalty, idx: 0, done: false,
+    mode: cfg.mode, kind: cfg.kind || "test", startedAt: Date.now(), penalty: !!cfg.penalty, idx: 0, done: false,
     limitSec: cfg.mode === "examen" ? Math.round((cfg.min || Math.max(1, list.length)) * 60) : 0,
     items: list.map(q => ({ tid: q.tid, qid: q.id, order: cfg.shuf ? shuffle(q.opts.map((_, i) => i)) : q.opts.map((_, i) => i) })),
     answers: list.map(() => null), flags: list.map(() => false), shown: list.map(() => false)
@@ -455,6 +478,7 @@ function finishRun(timeUp) {
   const sec = Math.min((Date.now() - r.startedAt) / 1000, r.limitSec || Infinity);
   clearActiveRun();
   const err = updateErrors(rows);
+  recordHistory(r, rows, c, w, b, nota, sec);
   S.lastResult = { mode: r.mode, rows, c, w, b, nota, sec, timeUp: !!timeUp, penalty: r.penalty, err };
   go("result", {}, "replace");
 }
@@ -550,9 +574,12 @@ const A = {
   reviewErrors: () => {
     const items = errItems().map(e => ({ ...findQ(e.tid, e.qid), tid: e.tid }));
     if (!items.length) return toast("No tienes fallos pendientes");
-    S.run = buildRun({ ...S.setup, mode: "practica", n: 0 }, shuffle(items)); go("run");
+    S.run = buildRun({ ...S.setup, mode: "practica", n: 0, kind: "fallos" }, shuffle(items)); go("run");
   },
   clrErrAsk: () => { S.p.clrErr = true; render(); },
+  clrHistAsk: () => { S.p.clrHist = true; render(); },
+  clrHistNo: () => { S.p.clrHist = false; render(); },
+  clrHist: async () => { S.history = []; S.p.clrHist = false; await saveHistory(); toast("Historial borrado"); render(); },
   clrErrNo: () => { S.p.clrErr = false; render(); },
   clrErr: async () => { S.errors = {}; S.p.clrErr = false; await saveErrors(); toast("Cuaderno de fallos vaciado"); render(); },
   subject: el => go("subject", { sid: el.dataset.s, tab: el.dataset.k || "temas" }),
@@ -584,7 +611,7 @@ const A = {
   submitAsk: () => { S.p.submitAsk = true; render(); },
   submitNo: () => { S.p.submitAsk = false; render(); },
   finish: () => finishRun(false),
-  retryWrong: () => { const R = S.lastResult; const items = R.rows.filter(x => !x.ok).map(x => ({ ...findQ(x.tid, x.qid), tid: x.tid })).filter(q => q.id); if (!items.length) return; S.run = buildRun({ ...S.setup, mode: "practica", n: 0 }, shuffle(items)); go("run", {}, "replace"); },
+  retryWrong: () => { const R = S.lastResult; const items = R.rows.filter(x => !x.ok).map(x => ({ ...findQ(x.tid, x.qid), tid: x.tid })).filter(q => q.id); if (!items.length) return; S.run = buildRun({ ...S.setup, mode: "practica", n: 0, kind: "repetir" }, shuffle(items)); go("run", {}, "replace"); },
   gen: el => { const tid = el.dataset.t || topicList()[0]?.id; if (!tid) return; go("gen", { tid, n: 10 }); },
   genSet: el => { S.p[el.dataset.f] = +el.dataset.k; render(); },
   genRun: () => genRun(),
@@ -642,6 +669,44 @@ document.addEventListener("submit", async e => {
 });
 
 /* ----- settings ----- */
+/* ----- estadísticas ----- */
+const KIND = { fallos: "Repaso de fallos", repetir: "Repetir no acertadas" };
+const fmtDay = d => new Date(d).toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit" });
+const fmtWhen = d => new Date(d).toLocaleString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const pctTxt = (c, n) => n ? Math.round(c / n * 100) + " %" : "–";
+VIEWS.stats = () => {
+  if (contentLoading()) return loadingView();
+  const all = S.history || [], tests = all.filter(h => (h.kind || "test") === "test"), reps = all.length - tests.length;
+  const head = `<div class="stack"><p class="eyebrow">Tu progreso</p><h1>Estadísticas</h1></div>`;
+  if (!all.length) return `<div class="stack-lg">${head}<p class="empty">Aún no has terminado ningún test. Cuando termines uno, aquí verás tu nota media, cómo evolucionas y en qué temas fallas más.</p><div><button class="btn" data-act="nav" data-v="setup">Hacer un test</button></div></div>`;
+  const avg = tests.length ? tests.reduce((a, h) => a + h.nota, 0) / tests.length : null;
+  const nq = tests.reduce((a, h) => a + h.total, 0), nok = tests.reduce((a, h) => a + h.aciertos, 0);
+  const last = tests.slice(-10);
+  const chart = last.length ? `<section class="stack"><h2>Evolución</h2><figure class="chart-fig">
+      <div class="chart" role="img" aria-label="${esc("Últimas notas: " + last.map(h => fmtNum(h.nota)).join(", "))}">${last.map(h => `<div class="col"><span class="v">${fmtNum(h.nota)}</span><i class="${h.nota >= 5 ? "ok" : "bad"}" style="height:${Math.max(2, h.nota * 10)}%"></i></div>`).join("")}<span class="pass" aria-hidden="true"></span></div>
+      <div class="chart-x" aria-hidden="true">${last.map(h => `<span>${fmtDay(h.date)}</span>`).join("")}</div>
+      <figcaption class="small muted">${last.length === 1 ? "Tu última nota" : `Tus últimas ${last.length} notas`}, sobre 10. La línea marca el 5.</figcaption></figure></section>` : "";
+  // aciertos por asignatura y tema (solo tests normales)
+  const byT = {};
+  for (const h of tests) for (const [tid, v] of Object.entries(h.porTema || {})) { const x = byT[tid] || (byT[tid] = [0, 0]); x[0] += v[0]; x[1] += v[1]; }
+  const subj = subjects().map(s => {
+    const ts = s.topics.filter(t => byT[t.id]).map(t => ({ t, c: byT[t.id][0], n: byT[t.id][1] })).sort((a, b) => a.c / a.n - b.c / b.n);
+    return { s, ts, c: ts.reduce((a, x) => a + x.c, 0), n: ts.reduce((a, x) => a + x.n, 0) };
+  }).filter(x => x.n).sort((a, b) => a.c / a.n - b.c / b.n);
+  const subjHTML = subj.length ? `<section class="stack"><h2>Aciertos por asignatura</h2><p class="small muted">De menos a más acertada, con sus temas. Así ves dónde flojeas.</p><div class="list">${subj.map(x => `<div class="item"><div class="grow stack" style="gap:8px">
+      <div class="spread"><span class="item-title">${esc(x.s.short)}</span><span class="mono">${pctTxt(x.c, x.n)}</span></div>
+      <div class="bar"><i style="width:${Math.round(x.c / x.n * 100)}%"></i></div>
+      <span class="small muted">${x.c} de ${x.n} preguntas acertadas</span>
+      <div class="trows">${x.ts.map((y, i) => `<div class="trow"><span class="ref accent">${esc(y.t.code || "T")}</span><span class="grow small">${esc(y.t.title)}${i === 0 && x.ts.length > 1 ? ` <span class="badge check">Más flojo</span>` : ""}</span><span class="mono small">${pctTxt(y.c, y.n)}</span></div>`).join("")}</div>
+    </div></div>`).join("")}</div></section>` : "";
+  const recent = `<section class="stack"><h2>Últimos tests</h2><div class="list">${all.slice(-10).reverse().map(h => `<div class="item"><span class="ref" style="background:${h.nota >= 5 ? "var(--ok-soft)" : "var(--bad-soft)"};color:${h.nota >= 5 ? "var(--ok)" : "var(--bad)"}">${fmtNum(h.nota)}</span><div class="grow stack" style="gap:2px"><span class="item-title">${h.mode === "examen" ? "Examen" : "Práctica"}${KIND[h.kind] ? " · " + KIND[h.kind] : ""}</span><span class="small muted">${esc(fmtWhen(h.date))} · ${h.aciertos} de ${h.total} acertadas${h.mode === "examen" ? " · " + fmtTime(h.sec) : ""}</span></div></div>`).join("")}</div></section>`;
+  return `<div class="stack-lg">${head}
+    <div class="stats"><div class="stat"><b>${tests.length}</b><span>${tests.length === 1 ? "test" : "tests"}${reps ? ` · ${reps} ${reps === 1 ? "repaso" : "repasos"}` : ""}</span></div><div class="stat"><b>${avg == null ? "–" : fmtNum(avg)}</b><span>nota media</span></div><div class="stat"><b>${pctTxt(nok, nq)}</b><span>aciertos</span></div></div>
+    ${tests.length ? "" : `<p class="small muted">Las medias solo cuentan los tests normales; de momento solo has hecho repasos.</p>`}
+    ${chart}${subjHTML}${recent}
+  </div>`;
+};
+
 VIEWS.settings = () => {
   return `<div class="stack-lg">
     <div class="stack"><p class="eyebrow">Configuración</p><h1>Ajustes</h1></div>
@@ -651,6 +716,10 @@ VIEWS.settings = () => {
     <section class="stack"><h2>Cuaderno de fallos</h2>
       <p class="muted">${(n => n ? `${n} ${n === 1 ? "pregunta pendiente" : "preguntas pendientes"}. Salen del cuaderno cuando las aciertas dos veces seguidas.` : "No tienes fallos pendientes.")(errItems().length)}</p>
       ${errItems().length ? (S.p.clrErr ? `<div class="callout warn confirm"><span class="grow">¿Vaciar el cuaderno de fallos?</span><button class="btn danger sm" data-act="clrErr">Vaciar</button><button class="btn quiet sm" data-act="clrErrNo">Cancelar</button></div>` : `<div class="row"><button class="btn ghost" data-act="clrErrAsk">Vaciar cuaderno</button></div>`) : ""}
+    </section>
+    <section class="stack"><h2>Historial de tests</h2>
+      <p class="muted">${(n => n ? `${n} ${n === 1 ? "test guardado" : "tests guardados"} para las estadísticas.` : "Aún no hay tests guardados.")((S.history || []).length)}</p>
+      ${(S.history || []).length ? (S.p.clrHist ? `<div class="callout warn confirm"><span class="grow">¿Borrar el historial y las estadísticas?</span><button class="btn danger sm" data-act="clrHist">Borrar</button><button class="btn quiet sm" data-act="clrHistNo">Cancelar</button></div>` : `<div class="row"><button class="btn ghost" data-act="clrHistAsk">Borrar historial</button></div>`) : ""}
     </section>
     <section class="stack"><h2>Copia de seguridad</h2>
       <p class="muted">Las preguntas que generes o añadas se guardan solo en este dispositivo. Descarga una copia para pasarlas a otro o para recuperarlas.</p>
@@ -668,7 +737,7 @@ Object.assign(A, {
   }
 });
 Object.assign(C, {
-  impFile: async el => { const f = el.files[0]; el.value = ""; if (!f) return; try { await Store.importAll(JSON.parse(await f.text())); await loadErrors(); toast("Copia restaurada"); go("home"); } catch (e) { toast("Ese archivo no es una copia válida."); } }
+  impFile: async el => { const f = el.files[0]; el.value = ""; if (!f) return; try { await Store.importAll(JSON.parse(await f.text())); await Promise.all([loadErrors(), loadHistory()]); toast("Copia restaurada"); go("home"); } catch (e) { toast("Ese archivo no es una copia válida."); } }
 });
 
 boot();

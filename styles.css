@@ -186,7 +186,7 @@ textarea.input{min-height:96px;resize:vertical;line-height:1.45}
 /* nav */
 .nav{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--bg);border-top:1px solid var(--line);
   padding-bottom:env(safe-area-inset-bottom,0px);padding-left:max(8px,env(safe-area-inset-left,0px));padding-right:max(8px,env(safe-area-inset-right,0px))}
-.nav-in{max-width:720px;margin:0 auto;display:grid;grid-template-columns:repeat(2,1fr);height:var(--nav-h)}
+.nav-in{max-width:720px;margin:0 auto;display:grid;grid-template-columns:repeat(3,1fr);height:var(--nav-h)}
 .nav button{position:relative;border:0;background:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:12px;font-weight:500;color:var(--muted)}
 .nav button svg{width:22px;height:22px}
 .nav button[aria-current="page"]{color:var(--ink)}
@@ -203,3 +203,15 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .score{font-size:64px;line-height:1;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
 @media (max-width:420px){h1{font-size:26px}.qtext{font-size:18px}.stat b{font-size:26px}.keys li{grid-template-columns:minmax(0,1fr);gap:4px}}
+
+/* Estadísticas: barras de las últimas notas (verde ≥ 5, rojo < 5) con la línea del aprobado, y aciertos por tema */
+.chart-fig{margin:0}
+.chart{position:relative;display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:6px;align-items:end;height:180px;padding-top:22px;border-bottom:1px solid var(--line)}
+.chart .col{height:100%;display:flex;flex-direction:column;justify-content:flex-end;min-width:0}
+.chart .col i{display:block;flex-shrink:0;border-radius:5px 5px 0 0;background:var(--ok)}
+.chart .col i.bad{background:var(--bad)}
+.chart .v{font-size:11px;font-weight:600;text-align:center;font-variant-numeric:tabular-nums;margin-bottom:3px;white-space:nowrap}
+.chart .pass{position:absolute;left:0;right:0;bottom:calc((100% - 22px) * .5);border-top:1px dashed var(--muted);pointer-events:none}
+.chart-x{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:6px;font-size:10.5px;color:var(--muted);text-align:center;margin:4px 0 8px;font-variant-numeric:tabular-nums}
+.trows{display:flex;flex-direction:column;gap:6px;margin-top:2px}
+.trow{display:flex;align-items:center;gap:10px}

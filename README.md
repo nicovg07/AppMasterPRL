@@ -16,7 +16,9 @@ App web para estudiar el Máster Universitario en Prevención de Riesgos Laboral
 - **Tests a prueba de cierres**: si el móvil cierra la app o pulsas Atrás en mitad de un test, queda en pausa y puedes continuarlo en la misma pregunta.
 - El botón **Atrás** del móvil navega dentro de la app.
 
-No hay estadísticas ni historial de notas. Tiene modo claro y oscuro (botón de la cabecera).
+- **Progreso**: cada test terminado queda en un historial con tu nota media, el % de aciertos, la evolución de las últimas 10 notas y los aciertos por asignatura y por tema, para ver dónde flojeas. Los repasos de fallos no cuentan en la media.
+
+Tiene modo claro y oscuro (botón de la cabecera).
 
 Es un sitio estático (HTML, CSS y JavaScript sin compilar), así que funciona en GitHub Pages sin servidor.
 
