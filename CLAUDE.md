@@ -1,7 +1,7 @@
 # CLAUDE.md — contexto para editar este proyecto
 
 ## Qué es
-App de estudio personal de Nico para el Máster Universitario en Prevención de Riesgos Laborales (Universidad Nebrija, oct 2026 – jun 2027). Se estudia asignatura a asignatura y tema a tema. Hay 6 asignaturas; la 1 ("Fundamentos de las técnicas de mejora de las condiciones de trabajo y ámbito jurídico de la prevención") tiene cargados del T1 al T10. La 2 ("Técnicas afines y otras actuaciones en materia de prevención de riesgos laborales") se está cargando: bloque 1 (T1–T3) desde el 02-11-2026; el bloque 2 son los T4–T8. Sus temas tienen ids `a2t1`… y sus preguntas `a2tNgXX`; aún sin autoevaluaciones (cuando lleguen, las oficiales van con ids `a2tNoXX` y se reordena el resumen según cómo preguntan). En esta asignatura el número impreso al pie coincide con la página del PDF.
+App de estudio personal de Nico para el Máster Universitario en Prevención de Riesgos Laborales (Universidad Nebrija, oct 2026 – jun 2027). Se estudia asignatura a asignatura y tema a tema. Hay 6 asignaturas; la 1 ("Fundamentos de las técnicas de mejora de las condiciones de trabajo y ámbito jurídico de la prevención") tiene cargados del T1 al T10. La 2 ("Técnicas afines y otras actuaciones en materia de prevención de riesgos laborales") tiene del T1 al T8 desde el 02-11-2026 (bloque 1: T1–T3, formación, comunicación y negociación; bloque 2: T4–T8, calidad, medio ambiente y seguridad vial). Los datos de cada tema se prepararon en JSON y se volcaron al seed con un script que comprueba 4 opciones, páginas y apartados y reparte la correcta entre A–D. Sus temas tienen ids `a2t1`… y sus preguntas `a2tNgXX`; aún sin autoevaluaciones (cuando lleguen, las oficiales van con ids `a2tNoXX` y se reordena el resumen según cómo preguntan). En esta asignatura el número impreso al pie coincide con la página del PDF.
 
 Se publica en GitHub Pages y se usa en el móvil y el ordenador.
 
@@ -34,7 +34,7 @@ Se publica en GitHub Pages y se usa en el móvil y el ordenador.
   - Al arrancar, `dropLegacy()` borra lo de versiones anteriores (progreso `data/…`, tarjetas y `prl:apikey`).
   - Guarda 150 ms después del último cambio y también al ocultar la app (`pagehide`, `visibilitychange`). Si `localStorage` falla (memoria llena), lanza el evento `prl:savefail` y la app muestra un aviso.
   - `Store.persist()` pide almacenamiento persistente (`navigator.storage.persist`); Ajustes muestra si está protegido.
-  - Hoy ocupa unos 540 KB en `localStorage` con una asignatura. Antes de cargar la tercera, conviene pasar a IndexedDB (el límite ronda los 5 MB).
+  - Con dos asignaturas cargadas, `data/seed.json` pesa unos 510 KB y `prl:db` unos 500.000 caracteres en `localStorage` (medido el 02-11-2026, más lo que añada el usuario). Antes de cargar la tercera, conviene pasar a IndexedDB (el límite ronda los 5 MB).
   - Después, `applySeed()` añade lo nuevo de `data/seed.json`: asignaturas y temas que no estaban y preguntas con `id` nuevo. Si una asignatura, un tema o un banco del seed traen un `rev` mayor que el guardado, se actualizan. En un banco solo se actualizan las preguntas que vienen del seed; las del usuario se quedan.
   - `meta/seed` guarda los ids ya añadidos para no resucitar lo que se borra. Para cambiar contenido ya publicado, sube el `rev`; para añadir preguntas, usa ids nuevos.
 - `app.js`:
