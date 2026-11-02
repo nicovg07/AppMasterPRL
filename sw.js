@@ -2,7 +2,7 @@
 // Contesta al momento con la copia guardada y, por detrás, la actualiza desde la red (stale-while-revalidate): lo
 // publicado se ve en la siguiente apertura. Al subir CACHE, la versión nueva se instala descargándolo todo de nuevo,
 // sustituye a la anterior y avisa a la app, que ofrece recargar («Nueva versión disponible»).
-const CACHE = "estudio-prl-v13";
+const CACHE = "estudio-prl-v14";
 const SHELL = ["./", "index.html", "styles.css", "storage.js", "app.js", "data/seed.json", "apuntes/apuntes.css", "manifest.webmanifest", "img/portada.webp", "icons/favicon-32.png", "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png"];
 
 // cache: "reload" para no guardar copias viejas de la caché HTTP (GitHub Pages las da por buenas 10 min)

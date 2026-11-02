@@ -1,7 +1,7 @@
 # CLAUDE.md — contexto para editar este proyecto
 
 ## Qué es
-App de estudio personal de Nico para el Máster Universitario en Prevención de Riesgos Laborales (Universidad Nebrija, oct 2026 – jun 2027). Se estudia asignatura a asignatura y tema a tema. Hay 6 asignaturas; la 1 ("Fundamentos de las técnicas de mejora de las condiciones de trabajo y ámbito jurídico de la prevención") tiene cargados del T1 al T10.
+App de estudio personal de Nico para el Máster Universitario en Prevención de Riesgos Laborales (Universidad Nebrija, oct 2026 – jun 2027). Se estudia asignatura a asignatura y tema a tema. Hay 6 asignaturas; la 1 ("Fundamentos de las técnicas de mejora de las condiciones de trabajo y ámbito jurídico de la prevención") tiene cargados del T1 al T10. La 2 ("Técnicas afines y otras actuaciones en materia de prevención de riesgos laborales") se está cargando: bloque 1 (T1–T3) desde el 02-11-2026; el bloque 2 son los T4–T8. Sus temas tienen ids `a2t1`… y sus preguntas `a2tNgXX`; aún sin autoevaluaciones (cuando lleguen, las oficiales van con ids `a2tNoXX` y se reordena el resumen según cómo preguntan). En esta asignatura el número impreso al pie coincide con la página del PDF.
 
 Se publica en GitHub Pages y se usa en el móvil y el ordenador.
 
