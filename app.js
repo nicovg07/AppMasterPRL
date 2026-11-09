@@ -460,7 +460,7 @@ function buildRun(cfg, items) {
   return {
     mode: cfg.mode, kind: cfg.kind || "test", startedAt: Date.now(), penalty: !!cfg.penalty, idx: 0, done: false,
     limitSec: cfg.mode === "examen" ? Math.round((cfg.min || Math.max(1, list.length)) * 60) : 0,
-    items: list.map(q => ({ tid: q.tid, qid: q.id, order: cfg.shuf ? shuffle(q.opts.map((_, i) => i)) : q.opts.map((_, i) => i) })),
+    items: list.map(q => ({ tid: q.tid, qid: q.id, order: cfg.shuf && !q.fix ? shuffle(q.opts.map((_, i) => i)) : q.opts.map((_, i) => i) })),
     answers: list.map(() => null), flags: list.map(() => false), shown: list.map(() => false)
   };
 }
