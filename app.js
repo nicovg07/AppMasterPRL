@@ -38,6 +38,7 @@ const ICON = {
   chart: svg('<path d="M4 20h16M7 16v-4M12 16V7M17 16v-7"/>'),
   down: svg('<path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/>', 'stroke-width="2" width="18" height="18"'),
   book: svg('<path d="M12 6.5C10.5 5 8 4.5 4 4.5v14c4 0 6.5.5 8 2 1.5-1.5 4-2 8-2v-14c-4 0-6.5.5-8 2zM12 6.5v14"/>'),
+  chat: svg('<path d="M20 11.5a8 8 0 0 1-11.6 7.2L4 20l1.3-4.2A8 8 0 1 1 20 11.5z"/><path d="M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01" stroke-width="2.6"/>'),
   tri: '<svg class="tri" viewBox="0 0 18 16" aria-hidden="true"><path d="M9 1 17 15H1z" fill="none" stroke="var(--warn)" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 6v4" stroke="var(--warn)" stroke-width="1.6" stroke-linecap="round"/><circle cx="9" cy="12.4" r=".9" fill="var(--warn)"/></svg>'
 };
 
@@ -103,7 +104,7 @@ async function boot() {
 }
 
 /* ---------- rendering ---------- */
-const LIVE = ["home", "subject", "topic", "setup", "stats"];
+const LIVE = ["home", "subject", "topic", "setup", "stats", "ia"];
 function refresh(force) {
   if (S.lock && !force) return;
   if (S.autoReview && S.loaded && !contentLoading() && autoReview()) return;
@@ -139,7 +140,7 @@ function go(view, p = {}, mode = "push") {
 function hashView(h) {
   if (h === "examen") { S.setup.mode = "examen"; S.setup.min = null; saveSetup(); return "setup"; }
   if (h === "fallos") { S.autoReview = true; return "setup"; }
-  return ["home", "setup", "settings", "stats"].includes(h) ? h : null;
+  return ["home", "setup", "settings", "stats", "ia"].includes(h) ? h : null;
 }
 function autoReview() {
   S.autoReview = false;
@@ -274,8 +275,8 @@ function render() {
   const gear = $("#gear"); if (gear) gear.setAttribute("aria-current", S.view === "settings" ? "page" : "false");
 }
 function renderNav() {
-  const tab = { settings: "", setup: "setup", run: "setup", result: "setup", stats: "stats" }[S.view] ?? "home";
-  const it = [["home", "Inicio", ICON.home], ["setup", "Test", ICON.test], ["stats", "Progreso", ICON.chart]];
+  const tab = { settings: "", setup: "setup", run: "setup", result: "setup", stats: "stats", ia: "ia" }[S.view] ?? "home";
+  const it = [["home", "Inicio", ICON.home], ["setup", "Test", ICON.test], ["stats", "Progreso", ICON.chart], ["ia", "Asistente", ICON.chat]];
   $("#nav").innerHTML = it.map(([v, l, i]) => `<button data-act="nav" data-v="${v}" ${tab === v ? 'aria-current="page"' : ""}>${i}<span>${l}</span></button>`).join("");
 }
 function loadingView() { return `<div class="stack"><div class="skel" style="width:40%"></div><div class="skel" style="width:70%;height:30px"></div><div class="skel" style="width:90%"></div><div class="skel" style="width:60%"></div></div>`; }
@@ -354,7 +355,7 @@ function tabResumen(t) {
   const sm = t.summary || [];
   if (!sm.length) return `<p class="empty">Este tema no tiene resumen.</p>`;
   return `<div class="stack-lg">${sm.map(b => `<section class="block"><h2>${esc(b.h)}</h2><ul class="keys">${(b.keys || []).map(k => typeof k === "string" ? `<li class="noref"><span>${esc(k)}</span></li>` : k.r ? `<li><span><span class="ref">${esc(k.r)}</span></span><span>${esc(k.t)}</span></li>` : `<li class="noref"><span>${esc(k.t)}</span></li>`).join("")}</ul>${b.trap ? `<div class="trap">${ICON.tri}<span><b>Ojo en el test.</b> ${esc(b.trap)}</span></div>` : ""}</section>`).join("")}
-  <button class="btn" data-act="practiceTopic" data-t="${t.id}">Practicar este tema</button></div>`;
+  <div class="row"><button class="btn" data-act="practiceTopic" data-t="${t.id}">Practicar este tema</button><button class="btn ghost" data-act="askIA" data-t="${t.id}">${ICON.chat}Preguntar al asistente</button></div></div>`;
 }
 
 /* ----- resources ----- */
@@ -482,7 +483,7 @@ VIEWS.run = () => {
   let after = "";
   if (shown) {
     const ok = ans === q.a;
-    after = `<div class="callout ${ok ? "ok" : "bad"} stack" style="gap:6px"><b>${ok ? "Correcto" : "Incorrecto · la buena es la " + LET[it.order.indexOf(q.a)]}</b>${q.exp ? `<p class="explain">${esc(q.exp)}</p>` : ""}${whereHTML(q.src, it.tid)}</div>
+    after = `<div class="callout ${ok ? "ok" : "bad"} stack" style="gap:6px"><b>${ok ? "Correcto" : "Incorrecto · la buena es la " + LET[it.order.indexOf(q.a)]}</b>${q.exp ? `<p class="explain">${esc(q.exp)}</p>` : ""}${whereHTML(q.src, it.tid)}${askBtn(it.tid, q.id, ans, it.order)}</div>
     <button class="btn block" data-act="${i < total - 1 ? "next" : "finish"}">${i < total - 1 ? "Siguiente" : "Ver resultado"}</button>`;
   }
   const examNav = exam ? `<div class="spread"><button class="btn ghost sm" data-act="prev" ${i === 0 ? "disabled" : ""}>Anterior</button><button class="btn ghost sm" data-act="flag" aria-pressed="${r.flags[i]}">${r.flags[i] ? "Marcada" : "Marcar para revisar"}</button><button class="btn sm" data-act="${i < total - 1 ? "next" : "submitAsk"}">${i < total - 1 ? "Siguiente" : "Entregar"}</button></div>
@@ -522,9 +523,22 @@ VIEWS.result = () => {
     <div class="stats"><div class="stat"><b style="color:var(--ok)">${R.c}</b><span>aciertos</span></div><div class="stat"><b style="color:var(--bad)">${R.w}</b><span>fallos${R.penalty ? " (restan)" : ""}</span></div><div class="stat"><b>${R.mode === "examen" ? fmtTime(R.sec) : R.b}</b><span>${R.mode === "examen" ? "tiempo" : "en blanco"}</span></div></div>
     ${R.err ? `<p class="small muted">Cuaderno de fallos: ${R.err.added ? `${R.err.added} ${R.err.added === 1 ? "nueva" : "nuevas"}` : "ninguna nueva"}${R.err.cleared ? ` · ${R.err.cleared} ${R.err.cleared === 1 ? "consolidada" : "consolidadas"}` : ""} · ${(n => `${n} ${n === 1 ? "pendiente" : "pendientes"} en total`)(errItems().length)}.</p>` : ""}
     <div class="row">${wrong.length ? `<button class="btn" data-act="retryWrong">Repetir las ${wrong.length} no acertadas</button>` : ""}<button class="btn ghost" data-act="go" data-v="setup">Nuevo test</button></div>
-    <section class="stack"><h2>Repaso</h2><div class="list">${R.rows.map((x, k) => { const q = findQ(x.tid, x.qid); if (!q) return ""; const mine = x.a == null ? "Sin responder" : `${LET[x.order.indexOf(x.a)]}. ${esc(q.opts[x.a])}`; return `<div class="item"><span class="ref" style="background:${x.ok ? "var(--ok-soft)" : "var(--bad-soft)"};color:${x.ok ? "var(--ok)" : "var(--bad)"}">${k + 1}</span><div class="grow stack" style="gap:6px"><span class="item-title">${esc(q.q)}</span>${x.ok ? `<span class="small" style="color:var(--ok)">${LET[x.order.indexOf(q.a)]}. ${esc(q.opts[q.a])}</span>` : `<span class="small" style="color:var(--bad)">Tu respuesta: ${mine}</span><span class="small" style="color:var(--ok)">Correcta: ${LET[x.order.indexOf(q.a)]}. ${esc(q.opts[q.a])}</span>`}${!x.ok && q.exp ? `<span class="small muted">${esc(q.exp)}</span>` : ""}${!x.ok ? whereHTML(q.src, x.tid) : ""}</div></div>`; }).join("")}</div></section>
+    <section class="stack"><h2>Repaso</h2><div class="list">${R.rows.map((x, k) => { const q = findQ(x.tid, x.qid); if (!q) return ""; const mine = x.a == null ? "Sin responder" : `${LET[x.order.indexOf(x.a)]}. ${esc(q.opts[x.a])}`; return `<div class="item"><span class="ref" style="background:${x.ok ? "var(--ok-soft)" : "var(--bad-soft)"};color:${x.ok ? "var(--ok)" : "var(--bad)"}">${k + 1}</span><div class="grow stack" style="gap:6px"><span class="item-title">${esc(q.q)}</span>${x.ok ? `<span class="small" style="color:var(--ok)">${LET[x.order.indexOf(q.a)]}. ${esc(q.opts[q.a])}</span>` : `<span class="small" style="color:var(--bad)">Tu respuesta: ${mine}</span><span class="small" style="color:var(--ok)">Correcta: ${LET[x.order.indexOf(q.a)]}. ${esc(q.opts[q.a])}</span>`}${!x.ok && q.exp ? `<span class="small muted">${esc(q.exp)}</span>` : ""}${!x.ok ? whereHTML(q.src, x.tid) + askBtn(x.tid, x.qid, x.a, x.order) : ""}</div></div>`; }).join("")}</div></section>
   </div>`;
 };
+
+/* ----- asistente: vive en asistente.js, que se carga la primera vez que se abre ----- */
+VIEWS.ia = () => {
+  if (!$("#iaJs")) {
+    const s = document.createElement("script"); s.id = "iaJs"; s.src = "asistente.js";
+    s.onerror = () => { s.remove(); if (S.view === "ia") $("#main").innerHTML = `<p class="empty">No se pudo cargar el asistente. Revisa la conexión.</p>`; };
+    document.head.append(s);
+  }
+  return loadingView();
+};
+// Duda con una pregunta corregida: abre el asistente con la pregunta, las opciones en el orden en que se vieron y la
+// respuesta dada (a: índice original o vacío si quedó en blanco), listo para enviar.
+const askBtn = (tid, qid, a, order) => `<button class="link small ask" data-act="askIA" data-t="${esc(tid)}" data-q="${esc(qid)}" data-a="${a == null ? "" : a}" data-ord="${order.join(",")}">${ICON.chat}Preguntar al asistente</button>`;
 
 /* ----- generar preguntas (sin IA): las crea la app con los recursos y el resumen del tema ----- */
 const norm = s => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
@@ -643,6 +657,8 @@ const A = {
   submitNo: () => { S.p.submitAsk = false; render(); },
   finish: () => finishRun(false),
   reload: () => location.reload(),
+  askIA: el => { const d = el.dataset; S.iaAsk = { tid: d.t, qid: d.q || null, a: d.a ? +d.a : null, ord: d.ord }; go("ia"); },
+  iaOpen: () => go("ia", { cfg: 1 }),
   retryWrong: () => { const R = S.lastResult; const items = R.rows.filter(x => !x.ok).map(x => ({ ...findQ(x.tid, x.qid), tid: x.tid })).filter(q => q.id); if (!items.length) return; S.run = buildRun({ ...S.setup, mode: "practica", n: 0, kind: "repetir" }, shuffle(items)); go("run", {}, "replace"); },
   gen: el => { const tid = el.dataset.t || topicList()[0]?.id; if (!tid) return; go("gen", { tid, n: 10 }); },
   genSet: el => { S.p[el.dataset.f] = +el.dataset.k; render(); },
@@ -771,6 +787,10 @@ VIEWS.settings = () => {
   return `<div class="stack-lg">
     <div class="stack"><p class="eyebrow">Configuración</p><h1>Ajustes</h1></div>
     ${canVibrate ? `<section class="stack"><h2>Vibración</h2><label class="toggle" for="vib"><span><b>Vibrar al responder</b><br><span class="small muted">Un toque al elegir, uno doble si fallas en práctica y otro al entregar el examen</span></span><input type="checkbox" id="vib" ${lsGet("vibra") === false ? "" : "checked"} data-chg="vibra"></label></section>` : ""}
+    <section class="stack"><h2>Asistente</h2>
+      <p class="muted">${lsGet("ia_key") ? "Tu clave de la API de Anthropic está guardada en este dispositivo." : "Para usarlo, pega tu clave de la API de Anthropic."}</p>
+      <div class="row"><button class="btn ghost" data-act="iaOpen">Clave y modelo</button></div>
+    </section>
     <section class="stack"><h2>Almacenamiento</h2>
       <p class="muted">${S.persisted === true ? "Protegido: el navegador no borrará tus datos aunque le falte espacio." : S.persisted === false ? "Sin proteger: si el móvil se queda sin espacio, el navegador podría borrar lo que guardas aquí. Instalar la app en la pantalla de inicio suele protegerlo; mientras, haz copias de vez en cuando." : "Este navegador no indica si protege tus datos. Haz copias de vez en cuando."}</p>
     </section>
